@@ -53,20 +53,25 @@ export async function seitenInfo(blob) {
   } catch (e) { d.destroy(); throw e; }
 }
 
-// Seite in einen Canvas zeichnen, Breite = canvas.width. Gibt {promise, cancel} zurück.
-export function zeichne(canvas, fileId, seite, doc = null) {
+// Seite in einen Canvas zeichnen. Ohne "kachel": ganze Seite, Breite = canvas.width.
+// Mit kachel {breite, x, y}: nur ein Ausschnitt (Seite wäre "breite" Pixel breit, Ausschnitt ab x/y).
+// Gibt {promise, cancel} zurück.
+export function zeichne(canvas, fileId, seite, doc = null, kachel = null) {
   let task = null, abbruch = false;
   const promise = (async () => {
     const d = doc || await dokument(fileId);
     const p = await d.getPage(seite);
     if (abbruch) return false;
     const v1 = p.getViewport({ scale: 1 });
-    const v = p.getViewport({ scale: canvas.width / v1.width });
+    const v = p.getViewport({ scale: (kachel ? kachel.breite : canvas.width) / v1.width });
     const ctx = canvas.getContext('2d');
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    task = p.render({ canvasContext: ctx, viewport: v, background: '#ffffff' });
+    task = p.render({
+      canvasContext: ctx, viewport: v, background: '#ffffff',
+      ...(kachel ? { transform: [1, 0, 0, 1, -kachel.x, -kachel.y] } : {}),
+    });
     try { await task.promise; } catch (e) { if (e?.name === 'RenderingCancelledException') return false; throw e; }
     return true;
   })();

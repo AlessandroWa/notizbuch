@@ -187,6 +187,16 @@ export async function ordnerPfad(parentId, namen) {
   return pid;
 }
 
+// Datei (z. B. Foto) zu einer Notiz speichern, gibt die Datei-ID zurück.
+export async function addFile(noteId, blob, type) {
+  const n = { ...note(noteId) };
+  const f = { id: uid(), noteId, name: '', type, blob };
+  n.fileIds = [...(n.fileIds || []), f.id];
+  await db.tx(['files', 'notes'], o => { o.files.put(f); o.notes.put(n); });
+  state.notes.set(noteId, n);
+  return f.id;
+}
+
 export const noteMitQuelle = quelle => [...state.notes.values()].find(n => n.quelle === quelle);
 
 export async function loadPages(n) {

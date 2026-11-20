@@ -130,3 +130,16 @@ export function frageMasse(titel, b, l) {
     });
   });
 }
+
+// Mehrzeiligen Text abfragen (Textfelder).
+export function frageText(titel, wert = '') {
+  return dialog(`<form method="dialog">
+    <h2>${esc(titel)}</h2>
+    <textarea name="t" rows="5" maxlength="4000">${esc(wert)}</textarea>
+    <div class="dlg-knoepfe"><button type="button" data-x="abbrechen">Abbrechen</button><button class="primaer">Übernehmen</button></div>
+  </form>`, (d, fertig) => {
+    const f = d.querySelector('form');
+    setTimeout(() => f.t.focus(), 30);
+    f.addEventListener('submit', e => { e.preventDefault(); fertig(f.t.value.replace(/\s+$/, '')); });
+  });
+}

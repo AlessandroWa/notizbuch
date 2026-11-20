@@ -102,7 +102,7 @@ const dunkel = await page.evaluate(() => {
 });
 pruefe(dunkel > 50, 'PDF-Seite wird angezeigt');
 pruefe(await page.locator('.ed-page').count() === 3, 'Drei Seiten untereinander');
-pruefe(await page.locator('.ed-page canvas.base').count() < 3 * 1, 'Nur sichtbare Seiten haben Canvas (' + await page.locator('.ed-page canvas.base').count() + ')');
+pruefe(await page.locator('.ed-page:nth-child(3) canvas').count() === 0, 'Nur sichtbare Kacheln haben Canvas (' + await page.locator('.ed-page canvas.base').count() + ' Kacheln)');
 if (SHOT) await page.screenshot({ path: SHOT + '/7-pdf.png' });
 await page.mouse.move(600, 500);
 await page.mouse.wheel(0, 1500);
@@ -139,7 +139,7 @@ if (SHOT) await page.screenshot({ path: SHOT + '/9-ordner-pdf.png' });
 
 // 6. Sicherung als ZIP, alles löschen, wieder laden
 await page.click('[data-a=einstellungen]');
-const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-a=export]')]);
+const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-a=sicherung]')]);
 const sicherung = await dl.path();
 pruefe(dl.suggestedFilename().endsWith('.zip'), 'Sicherung ist eine ZIP-Datei (' + Math.round(fs.statSync(sicherung).size / 1024) + ' KB)');
 await page.evaluate(async () => {

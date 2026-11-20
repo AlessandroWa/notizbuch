@@ -124,3 +124,4 @@ export function trifft(s, x, y, r) {
   }
   return false;
 }
+export const vergissBox = s => boxen.delete(s);

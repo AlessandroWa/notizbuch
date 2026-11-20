@@ -3,6 +3,9 @@ import * as store from './store.js';
 import * as ui from './ui.js';
 import { exportiere, lies, stelleWiederHer } from './backup.js';
 import { importiere } from './import.js';
+import { VORLAGEN } from './vorlagen.js';
+import { notizAlsPdf } from './pdfexport.js';
+import { makeThumb } from './vorschau.js';
 import { openEditor } from './editor.js';
 import { PAPIERE } from './ink.js';
 import { esc, datum, VERSION } from './util.js';
@@ -146,7 +149,7 @@ async function zeichneEinstellungen() {
     <div class="reihe"><button class="knopf primaer" data-a="notability">ZIP oder PDFs auswählen …</button></div>
     <h2>Sicherung</h2>
     <p>Alle Ordner, Notizen und PDFs in eine ZIP-Datei sichern, z. B. in „Dateien“ auf dem iPad oder auf dem Mac. Mit „Sicherung laden“ lässt sie sich auf jedem Gerät wieder einspielen.</p>
-    <div class="reihe"><button class="knopf primaer" data-a="export">Sicherung exportieren</button>
+    <div class="reihe"><button class="knopf primaer" data-a="sicherung">Sicherung exportieren</button>
     <button class="knopf" data-a="import">Sicherung laden …</button>
     <input type="file" id="import-datei" accept=".zip,.json,application/zip,application/json" hidden></div>
     <h2>Speicher</h2>
@@ -179,6 +182,8 @@ async function oeffneNotiz(id) {
     onTitle: t => store.updateNote(id, { title: t }),
     onSavePage: p => store.savePage(p),
     onAddPage: p => store.addPage(p),
+    onAddFile: (blob, typ) => store.addFile(id, blob, typ),
+    onExport: () => alsPdf(id),
     neueSeite: paper => store.newPage(id, paper),
     onSaveThumb: b => store.saveThumb(id, b),
   });
@@ -204,6 +209,7 @@ async function ladeVorschauen() {
 
 // ---------- Aktionen im Hauptbereich ----------
 main.addEventListener('click', async e => {
+  if (e.target.closest('.ed')) return; // Klicks im Editor behandelt der Editor selbst
   const el = e.target.closest('[data-a],[data-ordner]');
   if (!el) return;
   const a = el.dataset.a;
@@ -214,7 +220,7 @@ main.addEventListener('click', async e => {
   if (a === 'neu') return neuMenue(el);
   if (a === 'ordner-menue') return ordnerMenue(el, aktuellerOrdner);
   if (a === 'notiz-menue') return notizMenue(el, nid);
-  if (a === 'export') return exportieren(el);
+  if (a === 'sicherung') return exportieren(el);
   if (a === 'import') return document.getElementById('import-datei').click();
   if (a === 'notability') return waehleDateien('.zip,.pdf,application/zip,application/pdf', d => uebernehme(d, store.todoId()));
 });
@@ -260,6 +266,33 @@ async function uebernehme(dateien, zielOrdner) {
   render();
 }
 
+// Datei weitergeben: am iPad über "Teilen" (In Dateien sichern, AirDrop, Mail …), sonst herunterladen.
+async function gibDatei(datei, text) {
+  const tablet = matchMedia('(pointer: coarse)').matches;
+  if (tablet && navigator.canShare?.({ files: [datei] })) {
+    // Teilen braucht ein frisches Antippen, deshalb erst bestätigen lassen.
+    const mb = (datei.size / 1048576).toLocaleString('de-DE', { maximumFractionDigits: 1 });
+    if (!await ui.bestaetige(`${text} (${mb} MB).`, 'Teilen …')) return;
+    try { await navigator.share({ files: [datei], title: datei.name }); return; }
+    catch (err) { if (err.name === 'AbortError') return; }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(datei); a.download = datei.name;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+async function alsPdf(id) {
+  const n = store.note(id);
+  if (!n) return;
+  const f = ui.fortschritt('PDF wird erstellt');
+  let datei;
+  try { datei = await notizAlsPdf(n.title, await store.loadPages(n), (t, x) => f.setze(t, x)); }
+  catch (err) { f.zu(); return ui.meldung('PDF-Export fehlgeschlagen: ' + (err.message || err)); }
+  f.zu();
+  await gibDatei(datei, `PDF „${n.title}“ ist fertig`);
+}
+
 async function exportieren(knopf) {
   knopf.disabled = true;
   const f = ui.fortschritt('Sicherung wird erstellt');
@@ -268,18 +301,7 @@ async function exportieren(knopf) {
   catch (err) { knopf.disabled = false; return ui.meldung('Export fehlgeschlagen: ' + (err.message || err)); }
   finally { f.zu(); }
   try {
-    const tablet = matchMedia('(pointer: coarse)').matches;
-    if (tablet && navigator.canShare?.({ files: [datei] })) {
-      // Teilen braucht ein frisches Antippen, deshalb erst bestätigen lassen.
-      const mb = (datei.size / 1048576).toLocaleString('de-DE', { maximumFractionDigits: 1 });
-      if (!await ui.bestaetige(`Sicherung ist fertig (${mb} MB). Im nächsten Schritt „In Dateien sichern“ wählen.`, 'Sichern …')) return;
-      try { await navigator.share({ files: [datei], title: datei.name }); return; }
-      catch (err) { if (err.name === 'AbortError') return; }
-    }
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(datei); a.download = datei.name;
-    document.body.append(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    await gibDatei(datei, 'Sicherung ist fertig. Im nächsten Schritt „In Dateien sichern“ wählen');
   } catch (err) { ui.meldung('Export fehlgeschlagen: ' + (err.message || err)); }
   finally { knopf.disabled = false; }
 }
@@ -292,12 +314,23 @@ function zielOrdner() {
 async function neuMenue(knopf) {
   const k = await ui.menue(knopf, [
     ...Object.entries(PAPIERE).map(([p, t]) => ({ k: 'notiz:' + p, t: `Neue Notiz · ${t}` })),
+    ...Object.entries(VORLAGEN).map(([v, d]) => ({ k: 'vorlage:' + v, t: `Vorlage · ${d.name}` })),
     '-', { k: 'pdf', t: 'PDF importieren …' },
     '-', { k: 'ordner', t: route().art === 'ordner' ? 'Neuer Unterordner' : 'Neuer Ordner' },
   ]);
   if (!k) return;
   if (k === 'pdf') { const ziel = zielOrdner(); return waehleDateien('.pdf,application/pdf', d => uebernehme(d, ziel)); }
   if (k === 'ordner') return neuerOrdner(route().art === 'ordner' ? aktuellerOrdner : null);
+  if (k.startsWith('vorlage:')) {
+    const v = VORLAGEN[k.split(':')[1]];
+    const n = await store.createNote(zielOrdner(), v.paper);
+    await store.updateNote(n.id, { title: v.titel() });
+    const [p] = await store.loadPages(n);
+    p.objects = v.objekte();
+    await store.savePage(p);
+    await store.saveThumb(n.id, await makeThumb(p)).catch(() => {});
+    return geh('#/notiz/' + n.id);
+  }
   const n = await store.createNote(zielOrdner(), k.split(':')[1]);
   geh('#/notiz/' + n.id);
 }
@@ -341,9 +374,11 @@ async function notizMenue(knopf, id) {
   const n = store.note(id);
   const k = await ui.menue(knopf, [
     { k: 'oeffnen', t: 'Öffnen' }, { k: 'name', t: 'Umbenennen' }, { k: 'move', t: 'Verschieben nach …' },
+    { k: 'pdf', t: 'Als PDF exportieren' },
     '-', { k: 'del', t: 'Notiz löschen', gefahr: true },
   ]);
   if (k === 'oeffnen') return geh('#/notiz/' + id);
+  if (k === 'pdf') return alsPdf(id);
   if (k === 'name') { const t = await ui.frage('Notiz umbenennen', n.title, 'Speichern'); if (t) await store.updateNote(id, { title: t }, { touch: false }); }
   if (k === 'move') {
     const ziel = await ui.waehleOrdner(`„${n.title}“ verschieben nach`, { ausschluss: [n.folderId] });

@@ -109,7 +109,7 @@ pruefe(await anzahl() === 3, 'Nach Neuladen alles noch da (3 Striche)');
 
 // Sicherung exportieren
 await page.click('[data-a=einstellungen]');
-const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-a=export]')]);
+const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-a=sicherung]')]);
 const datei = await dl.path();
 const inhalt = fs.readFileSync(datei);
 pruefe(dl.suggestedFilename().endsWith('.zip') && inhalt.includes('notizbuch.json') && inhalt.includes('"format":"notizbuch-sicherung"'), 'Sicherung exportiert (ZIP)');

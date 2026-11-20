@@ -1,9 +1,11 @@
 // Objekte auf einer Seite: Sanitär-Symbole, Rechtecke, Linien, Maßlinien.
 // Alle Maße in Seiten-Einheiten (Seite = 1000 breit = 210 mm Papier).
-// Kasten-Objekte: {id, typ: 'symbol'|'rechteck', art?, x, y (Mitte), w, h, rot (Grad), spiegel, c?, lw?}
+// Kasten-Objekte: {id, typ: 'symbol'|'rechteck'|'bild'|'text', art?, x, y (Mitte), w, h, rot (Grad), spiegel, c?, lw?}
+//   bild: fileId (Foto im Store "files"); text: text, gr (Schriftgröße in Einheiten), c
 // Linien-Objekte: {id, typ: 'linie'|'mass', x1, y1, x2, y2, c, lw}
 // Die Wandseite eines Symbols ist oben (y = -h/2), bei rot = 0.
 import { MM } from './ink.js';
+import * as db from './db.js';
 
 export const STANDARD_MASSSTAB = 20;
 export const MASSSTAEBE = [10, 20, 25, 50];
@@ -21,7 +23,35 @@ export const SYMBOLE = {
   urinal: { name: 'Urinal', b: 35, l: 30 },
   tasse: { name: 'Duschtasse', b: 90, l: 90 },
   rinne: { name: 'Dusche Rinne', b: 120, l: 100 },
+  wanne: { name: 'Badewanne', b: 170, l: 75 },
 };
+
+// ---------- Fotos: dekodierte Bilder zwischenspeichern ----------
+const bilder = new Map(); // fileId -> ImageBitmap | Promise | 'fehler'
+let wennGeladen = () => {};
+export function beiBildGeladen(fn) { wennGeladen = fn; }
+export function ladeBild(fileId) {
+  let b = bilder.get(fileId);
+  if (b) return b instanceof Promise ? b : Promise.resolve(b);
+  b = db.get('files', fileId).then(f => (f ? createImageBitmap(f.blob) : 'fehler')).catch(() => 'fehler')
+    .then(bmp => { bilder.set(fileId, bmp); wennGeladen(fileId); return bmp; });
+  bilder.set(fileId, b);
+  return b;
+}
+export async function ladeBilder(page) {
+  await Promise.all((page.objects || []).filter(o => o.typ === 'bild').map(o => ladeBild(o.fileId)));
+}
+
+// ---------- Text ----------
+export const SCHRIFT = '-apple-system, "Segoe UI", Helvetica, Arial, sans-serif';
+let messCtx = null;
+export function textMasse(text, gr) {
+  messCtx ||= document.createElement('canvas').getContext('2d');
+  messCtx.font = `${gr}px ${SCHRIFT}`;
+  const zeilen = String(text).split('\n');
+  const w = Math.max(gr, ...zeilen.map(z => messCtx.measureText(z).width));
+  return { w: w + gr * 0.2, h: zeilen.length * gr * 1.3 };
+}
 
 // ---------- Zeichnen ----------
 function rundRechteck(ctx, x, y, w, h, r) {
@@ -85,6 +115,14 @@ export function zeichneSymbol(ctx, art, w, h, lw = 2, farbe = LINIE) {
       ctx.beginPath(); ctx.moveTo(0, y + h * 0.1); ctx.lineTo(0, -y - rand - d * 2); ctx.stroke();
     }
   }
+  else if (art === 'wanne') {
+    rundRechteck(ctx, x, y, w, h, Math.min(w, h) * 0.06); ctx.stroke();
+    const e = Math.min(w, h) * 0.1;
+    ctx.lineWidth = lw * 0.75;
+    rundRechteck(ctx, x + e, y + e, w - 2 * e, h - 2 * e, Math.min(w, h) * 0.32); ctx.stroke();
+    const r = Math.min(w, h) * 0.05, ax = w >= h ? x + e + Math.min(w, h) * 0.22 : 0, ay = w >= h ? 0 : y + e + Math.min(w, h) * 0.22;
+    ellipse(ctx, ax, ay, r, r); ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -95,12 +133,19 @@ const masstext = (laenge, massstab) => {
 
 export function zeichneObjekt(ctx, o, massstab) {
   ctx.save();
-  if (o.typ === 'symbol' || o.typ === 'rechteck') {
+  if (istKasten(o)) {
     ctx.translate(o.x, o.y);
     ctx.rotate(o.rot * Math.PI / 180);
     if (o.spiegel) { if (o.art === 'rinne' && o.w < o.h) ctx.scale(1, -1); else ctx.scale(-1, 1); }
     if (o.typ === 'symbol') zeichneSymbol(ctx, o.art, o.w, o.h, 2);
-    else { ctx.strokeStyle = o.c || LINIE; ctx.lineWidth = o.lw || 3; ctx.lineJoin = 'miter'; ctx.strokeRect(-o.w / 2, -o.h / 2, o.w, o.h); }
+    else if (o.typ === 'bild') {
+      const b = bilder.get(o.fileId);
+      if (b && !(b instanceof Promise) && b !== 'fehler') ctx.drawImage(b, -o.w / 2, -o.h / 2, o.w, o.h);
+      else { ctx.fillStyle = '#eceaea'; ctx.fillRect(-o.w / 2, -o.h / 2, o.w, o.h); if (!b) ladeBild(o.fileId); }
+    } else if (o.typ === 'text') {
+      ctx.fillStyle = o.c || LINIE; ctx.font = `${o.gr}px ${SCHRIFT}`; ctx.textBaseline = 'top';
+      String(o.text).split('\n').forEach((z, i) => ctx.fillText(z, -o.w / 2 + o.gr * 0.1, -o.h / 2 + i * o.gr * 1.3 + o.gr * 0.12));
+    } else { ctx.strokeStyle = o.c || LINIE; ctx.lineWidth = o.lw || 3; ctx.lineJoin = 'miter'; ctx.strokeRect(-o.w / 2, -o.h / 2, o.w, o.h); }
   } else if (o.typ === 'linie') {
     ctx.strokeStyle = o.c || LINIE; ctx.lineWidth = o.lw || 3; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(o.x1, o.y1); ctx.lineTo(o.x2, o.y2); ctx.stroke();
@@ -127,7 +172,7 @@ export function zeichneObjekte(ctx, page) {
 }
 
 // ---------- Geometrie ----------
-export const istKasten = o => o.typ === 'symbol' || o.typ === 'rechteck';
+export const istKasten = o => o.typ !== 'linie' && o.typ !== 'mass';
 export function lokal(o, x, y) { // Punkt in Objekt-Koordinaten
   const r = -o.rot * Math.PI / 180, dx = x - o.x, dy = y - o.y;
   return { x: dx * Math.cos(r) - dy * Math.sin(r), y: dx * Math.sin(r) + dy * Math.cos(r) };
@@ -196,3 +241,18 @@ export function neuesSymbol(art, x, y, massstab, id) {
 }
 
 export const inCm = (einheiten, massstab) => Math.round(einheiten / proCm(massstab));
+
+// Punkt im Vieleck (Lasso), poly = [x, y, x, y, …]
+export function imVieleck(x, y, poly) {
+  let drin = false;
+  for (let i = 0, j = poly.length - 2; i < poly.length; j = i, i += 2) {
+    const xi = poly[i], yi = poly[i + 1], xj = poly[j], yj = poly[j + 1];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) drin = !drin;
+  }
+  return drin;
+}
+
+// Objekt um dx/dy verschieben
+export function verschiebe(o, dx, dy) {
+  if (istKasten(o)) { o.x += dx; o.y += dy; } else { o.x1 += dx; o.x2 += dx; o.y1 += dy; o.y2 += dy; }
+}

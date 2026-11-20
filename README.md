@@ -3,7 +3,19 @@
 Persönliches Notizbuch nach dem Vorbild von Notability, für iPad mit Apple Pencil und Windows-PC.
 Web-App (PWA), läuft komplett offline, alle Daten bleiben auf dem Gerät. Bauplan: siehe `BAUPLAN.md`.
 
-## Stand: Version 0.3.0
+## Stand: Version 0.4.0
+
+### Neu in 0.4.0
+- **Vorlage „Beratungsgespräch“** (Neu › Vorlage): Kunde, Adresse, Telefon/E-Mail, Worum geht es, Interesse,
+  Material/Formate, Nächster Schritt, darunter freie Fläche.
+- **Begradigen**: Stift am Ende des Strichs kurz ruhig halten → gerade Linie (rastet bei 0/45/90°), weiterziehen verlängert.
+- **Badewanne** als Symbol (170 × 75 cm).
+- **Zoom**: zwei Finger (bis 500 %), am PC Strg + Mausrad; Knopf unten links setzt auf 100 % zurück.
+  Seiten werden dafür in Kacheln gezeichnet, nur sichtbare Kacheln belegen Speicher; PDFs bleiben scharf.
+- **Fotos einfügen** (Kamera oder Mediathek), verkleinert auf max. 2000 px, verschieben/größer/drehen, darauf schreiben.
+- **Lasso**: Handschrift und Objekte einkreisen, verschieben, duplizieren, löschen.
+- **Textfelder**: Werkzeug „T“, auf die Seite tippen; ausgewählten Text nochmal antippen = ändern.
+- **PDF-Export** (Knopf oben rechts im Editor oder „⋯“ an der Notiz): jede Seite als Bild mit 200 dpi.
 
 ### Neu in 0.3.0 (Bauschritt 3, Teil 1: Badskizzen)
 - Sanitär-Symbole als Vektor (Draufsicht): WC wandhängend, Waschbecken, Doppel-WT, Urinal, Duschtasse,
@@ -50,6 +62,8 @@ Reines HTML/CSS/JavaScript (ES-Module), kein Framework, kein Build. Hosting: Git
 | `js/import.js` | Übernahme aus Notability (ZIP/PDF) |
 | `js/zip.js` | ZIP lesen/schreiben (ohne Fremdbibliothek) |
 | `js/vorschau.js` | Vorschaubild der ersten Seite |
+| `js/vorlagen.js` | Vorlagen (Beratungsgespräch) |
+| `js/pdfexport.js` | Notiz als PDF |
 | `js/objekte.js` | Sanitär-Symbole, Linien, Rechtecke, Maße: zeichnen, treffen, einrasten |
 | `vendor/pdfjs/` | pdf.js 4.10.38 (Mozilla, Apache 2.0) |
 | `sw.js` | Offline (Service Worker) |
@@ -60,14 +74,14 @@ Reines HTML/CSS/JavaScript (ES-Module), kein Framework, kein Build. Hosting: Git
 - `pages`: `{id, noteId, w: 1000, h, paper, bg?, strokes[], objects[]}`, Breite immer 1000 Einheiten (A4 hoch: h = 1414)
   - `bg`: `{art: 'pdf', fileId, seite}` = PDF-Seite als Hintergrund
   - Strich: `{id, t: 'pen'|'marker', c: '#farbe', w: stärke, pts: [x, y, druck, x, y, druck, …]}`
-  - `objects[]`: Kasten `{id, typ: 'symbol'|'rechteck', art?, x, y (Mitte), w, h, rot, spiegel}` oder
+  - `objects[]`: Kasten `{id, typ: 'symbol'|'rechteck'|'bild'|'text', art?, x, y (Mitte), w, h, rot, spiegel, fileId?, text?, gr?}` oder
     Linie `{id, typ: 'linie'|'mass', x1, y1, x2, y2, c, lw}`; später auch Bilder und Textfelder
   - `massstab`: 10/20/25/50 (Standard 20)
 - `thumbs`: `{noteId, blob}` Vorschaubild, `files`: `{id, noteId, name, type, blob}` PDFs (später Fotos), `meta`
 
 ## Neue Version veröffentlichen
 1. `VERSION` in `js/util.js` **und** `sw.js` erhöhen (sonst bekommen installierte Geräte die Änderung nicht).
-2. Tests: `node test/smoke.mjs`, `node test/import.mjs`, `node test/skizze.mjs` (brauchen Playwright).
+2. Tests: `node test/smoke.mjs`, `node test/import.mjs`, `node test/skizze.mjs`, `node test/funktionen.mjs` (brauchen Playwright).
 3. Auf GitHub pushen; GitHub Pages veröffentlicht automatisch.
 
 ## Lokal starten
