@@ -1,6 +1,6 @@
 // Service Worker: hält die App offline verfügbar. Bei jeder neuen Version VERSION erhöhen
 // (gleiche Nummer wie in js/util.js), sonst bekommen installierte Geräte die Änderung nicht.
-const VERSION = '0.5.2';
+const VERSION = '0.5.3';
 const CACHE = 'notizbuch-' + VERSION;
 const DATEIEN = [
   './', 'index.html', 'app.css', 'manifest.webmanifest',
@@ -21,7 +21,7 @@ const DATEIEN = [
   'vendor/pdfjs/standard_fonts/LiberationSans-BoldItalic.ttf',
   'vendor/pdfjs/standard_fonts/LiberationSans-Italic.ttf',
   'vendor/pdfjs/standard_fonts/LiberationSans-Regular.ttf',
-  'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'icons/logo-walz.svg',
+  'icons/favicon-64.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'icons/logo-walz.svg',
 ];
 
 self.addEventListener('install', e => {
