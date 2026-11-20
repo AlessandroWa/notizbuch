@@ -95,12 +95,13 @@ export async function deleteFolder(id) {
   if (folder(id)?.system) throw new Error('Dieser Ordner kann nicht gelöscht werden.');
   const ids = descendants(id);
   const notes = [...state.notes.values()].filter(n => ids.includes(n.folderId));
-  await db.tx(['folders', 'notes', 'pages', 'thumbs'], o => {
+  await db.tx(['folders', 'notes', 'pages', 'thumbs', 'files'], o => {
     for (const fid of ids) o.folders.delete(fid);
     for (const n of notes) {
       o.notes.delete(n.id);
       o.thumbs.delete(n.id);
       for (const p of n.pageIds) o.pages.delete(p);
+      for (const f of n.fileIds || []) o.files.delete(f);
     }
   });
   for (const fid of ids) state.folders.delete(fid);
@@ -134,13 +135,49 @@ export const moveNote = (id, folderId) => updateNote(id, { folderId }, { touch: 
 export async function deleteNote(id) {
   const n = note(id);
   if (!n) return;
-  await db.tx(['notes', 'pages', 'thumbs'], o => {
+  await db.tx(['notes', 'pages', 'thumbs', 'files'], o => {
     o.notes.delete(id);
     o.thumbs.delete(id);
     for (const p of n.pageIds) o.pages.delete(p);
+    for (const f of n.fileIds || []) o.files.delete(f);
   });
   state.notes.delete(id);
 }
+
+// Neue leere Seite am Ende einer Notiz.
+export async function addPage(page) {
+  const n = { ...note(page.noteId), updatedAt: Date.now() };
+  n.pageIds = [...n.pageIds, page.id];
+  await db.tx(['pages', 'notes'], o => { o.pages.put(page); o.notes.put(n); });
+  state.notes.set(n.id, n);
+}
+
+// Notiz aus einer PDF: jede PDF-Seite wird eine Seite (Breite 1000, Höhe nach Seitenverhältnis).
+export async function createPdfNote({ folderId, title, blob, seiten, datum = Date.now(), quelle = null }) {
+  const n = { id: uid(), folderId, title, pageIds: [], fileIds: [], createdAt: datum, updatedAt: datum, ...(quelle ? { quelle } : {}) };
+  const file = { id: uid(), noteId: n.id, name: title + '.pdf', type: 'application/pdf', blob };
+  n.fileIds.push(file.id);
+  const pages = seiten.map((s, i) => ({
+    ...newPage(n.id, 'blanko'), h: Math.round(PAGE_W * s.h / s.w), bg: { art: 'pdf', fileId: file.id, seite: i + 1 },
+  }));
+  n.pageIds = pages.map(p => p.id);
+  await db.tx(['notes', 'pages', 'files'], o => { o.files.put(file); for (const p of pages) o.pages.put(p); o.notes.put(n); });
+  state.notes.set(n.id, n);
+  return { note: n, pages };
+}
+
+// Ordnerpfad unter "parentId" finden oder anlegen (Namen ohne Rücksicht auf Groß/Klein).
+export async function ordnerPfad(parentId, namen) {
+  let pid = parentId;
+  for (const name of namen) {
+    const f = children(pid).find(c => c.name.toLocaleLowerCase('de') === name.toLocaleLowerCase('de'))
+      || await createFolder({ name, parentId: pid, color: pid ? folder(pid).color : FARBEN[1] });
+    pid = f.id;
+  }
+  return pid;
+}
+
+export const noteMitQuelle = quelle => [...state.notes.values()].find(n => n.quelle === quelle);
 
 export async function loadPages(n) {
   const pages = await Promise.all(n.pageIds.map(id => db.get('pages', id)));

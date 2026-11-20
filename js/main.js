@@ -2,6 +2,7 @@
 import * as store from './store.js';
 import * as ui from './ui.js';
 import { exportiere, lies, stelleWiederHer } from './backup.js';
+import { importiere } from './import.js';
 import { openEditor } from './editor.js';
 import { PAPIERE } from './ink.js';
 import { esc, datum, VERSION } from './util.js';
@@ -137,11 +138,14 @@ function zeichneSuche(q) {
 async function zeichneEinstellungen() {
   main.innerHTML = kopf('<span>Einstellungen</span>', '') + `<h1>Einstellungen</h1>
   <section class="einst">
+    <h2>Aus Notability übernehmen</h2>
+    <p>In OneDrive den Ordner „Notability“ herunterladen (ergibt eine ZIP-Datei) und hier auswählen. Die Ordner werden übernommen, jede PDF wird eine Notiz, auf der du weiterschreiben kannst. Schon übernommene Notizen werden beim nächsten Mal übersprungen, du kannst also jederzeit nachholen.</p>
+    <div class="reihe"><button class="knopf primaer" data-a="notability">ZIP oder PDFs auswählen …</button></div>
     <h2>Sicherung</h2>
-    <p>Alle Ordner und Notizen in eine Datei sichern, z. B. in „Dateien“ auf dem iPad oder auf dem PC. Mit „Sicherung laden“ lässt sie sich auf jedem Gerät wieder einspielen.</p>
+    <p>Alle Ordner, Notizen und PDFs in eine ZIP-Datei sichern, z. B. in „Dateien“ auf dem iPad oder auf dem Mac. Mit „Sicherung laden“ lässt sie sich auf jedem Gerät wieder einspielen.</p>
     <div class="reihe"><button class="knopf primaer" data-a="export">Sicherung exportieren</button>
     <button class="knopf" data-a="import">Sicherung laden …</button>
-    <input type="file" id="import-datei" accept=".json,application/json" hidden></div>
+    <input type="file" id="import-datei" accept=".zip,.json,application/zip,application/json" hidden></div>
     <h2>Speicher</h2>
     <p id="speicher">Wird geprüft …</p>
     <h2>App</h2>
@@ -171,6 +175,8 @@ async function oeffneNotiz(id) {
     onBack: () => geh('#/ordner/' + (store.note(id)?.folderId || store.todoId())),
     onTitle: t => store.updateNote(id, { title: t }),
     onSavePage: p => store.savePage(p),
+    onAddPage: p => store.addPage(p),
+    neueSeite: paper => store.newPage(id, paper),
     onSaveThumb: b => store.saveThumb(id, b),
   });
 }
@@ -207,6 +213,7 @@ main.addEventListener('click', async e => {
   if (a === 'notiz-menue') return notizMenue(el, nid);
   if (a === 'export') return exportieren(el);
   if (a === 'import') return document.getElementById('import-datei').click();
+  if (a === 'notability') return waehleDateien('.zip,.pdf,application/zip,application/pdf', d => uebernehme(d, store.todoId()));
 });
 main.addEventListener('change', async e => {
   if (e.target.id !== 'import-datei' || !e.target.files[0]) return;
@@ -214,7 +221,8 @@ main.addEventListener('change', async e => {
     const d = await lies(e.target.files[0]);
     const ok = await ui.bestaetige(`Sicherung vom ${datum(d.exportiertAm)} mit ${d.folders.length} Ordnern und ${d.notes.length} Notizen laden? Alle Daten auf diesem Gerät werden dadurch ERSETZT.`, 'Ersetzen und laden', true);
     if (!ok) return;
-    await stelleWiederHer(d);
+    const f = ui.fortschritt('Sicherung wird geladen');
+    try { await stelleWiederHer(d, (t, x) => f.setze(t, x)); } finally { f.zu(); }
     await store.init();
     await ui.meldung('Sicherung geladen.');
     geh('#/ordner/' + store.todoId());
@@ -222,12 +230,46 @@ main.addEventListener('change', async e => {
   finally { e.target.value = ''; }
 });
 
+// Datei-Auswahl öffnen (mehrere Dateien möglich).
+function waehleDateien(accept, fertig) {
+  const i = document.createElement('input');
+  i.type = 'file'; i.accept = accept; i.multiple = true; i.hidden = true;
+  i.addEventListener('change', () => { const d = [...i.files]; i.remove(); if (d.length) fertig(d); });
+  document.body.append(i);
+  i.click();
+}
+
+// PDFs oder Notability-ZIP übernehmen.
+async function uebernehme(dateien, zielOrdner) {
+  navigator.storage?.persist?.().catch(() => {});
+  const f = ui.fortschritt('Wird übernommen');
+  let erg;
+  try { erg = await importiere(dateien, zielOrdner, (t, x, k) => f.setze(t, x, k)); }
+  catch (err) { f.zu(); return ui.meldung(err.message || String(err)); }
+  f.zu();
+  const teile = [`${erg.notizen} Notiz${erg.notizen === 1 ? '' : 'en'} übernommen`];
+  if (erg.ordner) teile.push(`${erg.ordner} Ordner angelegt`);
+  if (erg.uebersprungen) teile.push(`${erg.uebersprungen} schon vorhanden (übersprungen)`);
+  let text = teile.join(', ') + '.';
+  if (erg.fehler.length) text += `\n\n${erg.fehler.length} Datei(en) ließen sich nicht lesen:\n` + erg.fehler.slice(0, 8).join('\n') + (erg.fehler.length > 8 ? '\n…' : '');
+  await ui.meldung(text);
+  if (dateien.length === 1 && erg.notizen === 1 && erg.letzte && !erg.fehler.length && zielOrdner === aktuellerOrdner) return geh('#/notiz/' + erg.letzte);
+  render();
+}
+
 async function exportieren(knopf) {
   knopf.disabled = true;
+  const f = ui.fortschritt('Sicherung wird erstellt');
+  let datei;
+  try { datei = await exportiere((t, x) => f.setze(t, x)); }
+  catch (err) { knopf.disabled = false; return ui.meldung('Export fehlgeschlagen: ' + (err.message || err)); }
+  finally { f.zu(); }
   try {
-    const datei = await exportiere();
     const tablet = matchMedia('(pointer: coarse)').matches;
     if (tablet && navigator.canShare?.({ files: [datei] })) {
+      // Teilen braucht ein frisches Antippen, deshalb erst bestätigen lassen.
+      const mb = (datei.size / 1048576).toLocaleString('de-DE', { maximumFractionDigits: 1 });
+      if (!await ui.bestaetige(`Sicherung ist fertig (${mb} MB). Im nächsten Schritt „In Dateien sichern“ wählen.`, 'Sichern …')) return;
       try { await navigator.share({ files: [datei], title: datei.name }); return; }
       catch (err) { if (err.name === 'AbortError') return; }
     }
@@ -247,9 +289,11 @@ function zielOrdner() {
 async function neuMenue(knopf) {
   const k = await ui.menue(knopf, [
     ...Object.entries(PAPIERE).map(([p, t]) => ({ k: 'notiz:' + p, t: `Neue Notiz · ${t}` })),
+    '-', { k: 'pdf', t: 'PDF importieren …' },
     '-', { k: 'ordner', t: route().art === 'ordner' ? 'Neuer Unterordner' : 'Neuer Ordner' },
   ]);
   if (!k) return;
+  if (k === 'pdf') { const ziel = zielOrdner(); return waehleDateien('.pdf,application/pdf', d => uebernehme(d, ziel)); }
   if (k === 'ordner') return neuerOrdner(route().art === 'ordner' ? aktuellerOrdner : null);
   const n = await store.createNote(zielOrdner(), k.split(':')[1]);
   geh('#/notiz/' + n.id);

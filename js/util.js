@@ -1,5 +1,5 @@
 // Kleine Helfer, überall gebraucht.
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 
 export const uid = () =>
   (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 12));

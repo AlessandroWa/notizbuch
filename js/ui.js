@@ -93,3 +93,22 @@ export function menue(anker, punkte) {
     m.querySelector('button')?.focus({ preventScroll: true });
   });
 }
+
+// Fortschrittsanzeige für lange Vorgänge (lässt sich nicht wegklicken).
+export function fortschritt(titel) {
+  const d = document.createElement('dialog');
+  d.className = 'dlg fortschritt';
+  d.innerHTML = `<h2>${esc(titel)}</h2><p class="dlg-text" data-t>Bitte warten …</p><progress max="1" value="0"></progress><p class="klein" data-k></p>`;
+  d.addEventListener('cancel', e => e.preventDefault());
+  document.body.append(d);
+  d.showModal();
+  return {
+    setze(text, anteil, klein = '') {
+      d.querySelector('[data-t]').textContent = text;
+      if (anteil == null) d.querySelector('progress').removeAttribute('value');
+      else d.querySelector('progress').value = anteil;
+      d.querySelector('[data-k]').textContent = klein;
+    },
+    zu() { d.close(); d.remove(); },
+  };
+}

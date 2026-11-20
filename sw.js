@@ -1,10 +1,26 @@
 // Service Worker: hält die App offline verfügbar. Bei jeder neuen Version VERSION erhöhen
 // (gleiche Nummer wie in js/util.js), sonst bekommen installierte Geräte die Änderung nicht.
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const CACHE = 'notizbuch-' + VERSION;
 const DATEIEN = [
   './', 'index.html', 'app.css', 'manifest.webmanifest',
   'js/main.js', 'js/ui.js', 'js/store.js', 'js/db.js', 'js/ink.js', 'js/editor.js', 'js/backup.js', 'js/util.js',
+  'js/zip.js', 'js/pdf.js', 'js/import.js', 'js/vorschau.js',
+  'vendor/pdfjs/pdf.min.mjs', 'vendor/pdfjs/pdf.worker.min.mjs',
+  'vendor/pdfjs/standard_fonts/FoxitDingbats.pfb',
+  'vendor/pdfjs/standard_fonts/FoxitFixed.pfb',
+  'vendor/pdfjs/standard_fonts/FoxitFixedBold.pfb',
+  'vendor/pdfjs/standard_fonts/FoxitFixedBoldItalic.pfb',
+  'vendor/pdfjs/standard_fonts/FoxitFixedItalic.pfb',
+  'vendor/pdfjs/standard_fonts/FoxitSerif.pfb',
+  'vendor/pdfjs/standard_fonts/FoxitSerifBold.pfb',
+  'vendor/pdfjs/standard_fonts/FoxitSerifBoldItalic.pfb',
+  'vendor/pdfjs/standard_fonts/FoxitSerifItalic.pfb',
+  'vendor/pdfjs/standard_fonts/FoxitSymbol.pfb',
+  'vendor/pdfjs/standard_fonts/LiberationSans-Bold.ttf',
+  'vendor/pdfjs/standard_fonts/LiberationSans-BoldItalic.ttf',
+  'vendor/pdfjs/standard_fonts/LiberationSans-Italic.ttf',
+  'vendor/pdfjs/standard_fonts/LiberationSans-Regular.ttf',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png',
 ];
 
@@ -18,6 +34,7 @@ self.addEventListener('activate', e => {
     .then(() => self.clients.claim()));
 });
 
+// vendor/pdfjs/cmaps/ wird erst bei Bedarf geladen und dann im Cache behalten.
 // Erst Cache, dann Netz. Seitenaufrufe bekommen immer index.html aus dem Cache.
 self.addEventListener('fetch', e => {
   const req = e.request;

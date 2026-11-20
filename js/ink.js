@@ -85,10 +85,9 @@ export function drawStroke(ctx, s) {
   else { drawInkPart(ctx, s, 0); drawInkTail(ctx, s); }
 }
 
-export function renderPage(ctx, page) {
+// Nur die Striche (der Hintergrund liegt im Editor auf eigener Ebene).
+export function drawStrokes(ctx, page) {
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  drawPaper(ctx, page.paper, page.w, page.h);
-  // page.objects (Bilder, PDF, Symbole, Text) kommen ab Bauschritt 2 hier dazu.
   for (const s of page.strokes) drawStroke(ctx, s);
 }
 
@@ -124,15 +123,4 @@ export function trifft(s, x, y, r) {
     if (abstandSeg(x, y, a[j], a[j + 1], a[j + 3], a[j + 4]) < grenze) return true;
   }
   return false;
-}
-
-// Vorschaubild der ersten Seite als JPEG.
-export function makeThumb(page, breite = 420) {
-  const c = document.createElement('canvas');
-  const k = breite / page.w;
-  c.width = breite; c.height = Math.round(page.h * k);
-  const ctx = c.getContext('2d');
-  ctx.scale(k, k);
-  renderPage(ctx, page);
-  return new Promise(res => c.toBlob(b => res(b), 'image/jpeg', 0.82));
 }

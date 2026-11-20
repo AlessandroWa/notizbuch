@@ -74,10 +74,10 @@ await page.waitForTimeout(700);
 pruefe(await anzahl() === 2, 'Zwei Stift-Striche gespeichert');
 
 // Finger zeichnet im "Nur Stift"-Modus nicht, sondern blättert
-const vorher = await page.evaluate(() => getComputedStyle(document.querySelector('.ed-page')).transform);
+const vorher = await page.evaluate(() => getComputedStyle(document.querySelector('.ed-stack')).transform);
 await strich('touch', Array.from({ length: 10 }, (_, i) => [600, 600 - i * 30]), 9);
 await page.waitForTimeout(700);
-const nachher = await page.evaluate(() => getComputedStyle(document.querySelector('.ed-page')).transform);
+const nachher = await page.evaluate(() => getComputedStyle(document.querySelector('.ed-stack')).transform);
 pruefe(await anzahl() === 2 && vorher !== nachher, 'Finger blättert und schreibt nicht');
 await page.mouse.wheel(0, -2000);
 
@@ -111,8 +111,8 @@ pruefe(await anzahl() === 3, 'Nach Neuladen alles noch da (3 Striche)');
 await page.click('[data-a=einstellungen]');
 const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-a=export]')]);
 const datei = await dl.path();
-const inhalt = JSON.parse(fs.readFileSync(datei, 'utf8'));
-pruefe(inhalt.format === 'notizbuch-sicherung' && inhalt.notes.length === 1 && inhalt.thumbs.length === 1, 'Sicherung exportiert');
+const inhalt = fs.readFileSync(datei);
+pruefe(dl.suggestedFilename().endsWith('.zip') && inhalt.includes('notizbuch.json') && inhalt.includes('"format":"notizbuch-sicherung"'), 'Sicherung exportiert (ZIP)');
 if (SHOT) await page.screenshot({ path: SHOT + '/4-einstellungen.png' });
 
 // Notiz löschen, dann Sicherung wieder laden
@@ -125,6 +125,7 @@ pruefe(await anzahl() === 0, 'Notiz gelöscht');
 await page.click('[data-a=einstellungen]');
 await page.setInputFiles('#import-datei', datei);
 await page.click('.dlg .gefahr');
+await page.waitForSelector('.dlg:not(.fortschritt) .primaer');
 await page.click('.dlg .primaer');
 await page.waitForTimeout(300);
 pruefe(await anzahl() === 3, 'Sicherung geladen (3 Striche zurück)');
