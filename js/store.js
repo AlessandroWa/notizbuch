@@ -6,13 +6,18 @@ import { PAGE_W, PAGE_H } from './ink.js';
 
 export const state = { folders: new Map(), notes: new Map() };
 
-export const FARBEN = ['#0e8fa3', '#5b6270', '#2e9d3a', '#1f5fd6', '#7b3fc4', '#c2185b',
+// Gedämpfte Ordnerfarben (passend zum Anthrazit des Logos)
+export const FARBEN = ['#5f8f97', '#8a8687', '#6f8f6a', '#647d99', '#857597', '#9c6b78',
+  '#b58a91', '#a8645b', '#bb8c62', '#bba567', '#8c7564', '#5d666e'];
+// Frühere, kräftige Farben (Version 0.1/0.2) werden beim Start auf die gedämpften umgestellt.
+const ALTE_FARBEN = ['#0e8fa3', '#5b6270', '#2e9d3a', '#1f5fd6', '#7b3fc4', '#c2185b',
   '#e91e63', '#e53935', '#f57c00', '#f2b705', '#795548', '#37474f'];
 
+const [PETROL, GRAU, GRUEN, , , BEERE, ROSE, ZIEGEL, OCKER, , , SCHIEFER] = FARBEN;
 const START = [
-  ['To Do', '#0e8fa3', 'todo'], ['Auftrag', '#5b6270'], ['Offen', '#5b6270'], ['Abgeschlossene BV', '#5b6270'],
-  ['Whirlpools', '#c2185b'], ['Team-Meeting', '#e91e63'], ['Ablage', '#2e9d3a'], ['Ausstellung', '#e53935'],
-  ['Mitarbeiter', '#f57c00'], ['Privat', '#37474f'], ['Ecommerce', '#5b6270'],
+  ['To Do', PETROL, 'todo'], ['Auftrag', GRAU], ['Offen', GRAU], ['Abgeschlossene BV', GRAU],
+  ['Whirlpools', BEERE], ['Team-Meeting', ROSE], ['Ablage', GRUEN], ['Ausstellung', ZIEGEL],
+  ['Mitarbeiter', OCKER], ['Privat', SCHIEFER], ['Ecommerce', GRAU],
 ];
 
 export async function init() {
@@ -26,6 +31,11 @@ export async function init() {
       for (const f of folders) o.folders.put(f);
       o.meta.put({ key: 'schema', value: 1 });
     });
+  }
+  const umstellen = folders.filter(f => ALTE_FARBEN.includes(f.color));
+  if (umstellen.length) {
+    for (const f of umstellen) f.color = FARBEN[ALTE_FARBEN.indexOf(f.color)];
+    await db.tx(['folders'], o => { for (const f of umstellen) o.folders.put(f); });
   }
   state.folders = new Map(folders.map(f => [f.id, f]));
   state.notes = new Map(notes.map(n => [n.id, n]));

@@ -25,9 +25,9 @@ export function drawPaper(ctx, paper, w, h) {
   if (paper === 'liniert') linien(ctx, '#c9d7ec', 1.2, w, h, 8 * MM, 25 * MM, false);
   else if (paper === 'kariert') linien(ctx, '#dbe3ee', 1, w, h, 5 * MM, 5 * MM, true);
   else if (paper === 'mm') {
-    linien(ctx, '#f6dcc6', 0.5, w, h, MM, MM, true);
-    linien(ctx, '#efc29c', 0.8, w, h, MM, MM, true, 5);
-    linien(ctx, '#e3a46f', 1.1, w, h, MM, MM, true, 10);
+    linien(ctx, '#f8ebe0', 0.4, w, h, MM, MM, true);
+    linien(ctx, '#f1d6be', 0.6, w, h, MM, MM, true, 5);
+    linien(ctx, '#e8bf9c', 0.9, w, h, MM, MM, true, 10);
   }
 }
 

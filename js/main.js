@@ -53,7 +53,10 @@ function zeichneSeite() {
   lauf(null, 0);
   const q = art === 'suche' ? wert : '';
   side.innerHTML = `
-    <div class="side-oben"><button class="rund" data-a="einstellungen" aria-label="Einstellungen" title="Einstellungen">${SVG.gear}</button></div>
+    <div class="side-oben">
+      <img class="logo" src="icons/logo-walz.png" alt="WALZ">
+      <button class="rund" data-a="einstellungen" aria-label="Einstellungen" title="Einstellungen">${SVG.gear}</button>
+    </div>
     <label class="suche">${SVG.lupe}<input type="search" id="suche" placeholder="Suchen" value="${esc(q)}" autocomplete="off" enterkeyhint="search"></label>
     <div class="side-kopf"><span>Ordner</span><button class="rund" data-a="neuer-ordner" aria-label="Neuer Ordner" title="Neuer Ordner">${SVG.plus}</button></div>
     <nav class="baum" role="tree" aria-label="Ordner">${zeilen.join('')}</nav>`;

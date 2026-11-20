@@ -112,3 +112,21 @@ export function fortschritt(titel) {
     zu() { d.close(); d.remove(); },
   };
 }
+
+// Breite und Länge in cm abfragen.
+export function frageMasse(titel, b, l) {
+  return dialog(`<form method="dialog">
+    <h2>${esc(titel)}</h2>
+    <div class="masse"><label>Breite (cm)<input name="b" type="number" inputmode="numeric" min="5" max="2000" value="${b}" required></label>
+    <label>Länge (cm)<input name="l" type="number" inputmode="numeric" min="5" max="2000" value="${l}" required></label></div>
+    <div class="dlg-knoepfe"><button type="button" data-x="abbrechen">Abbrechen</button><button class="primaer">Übernehmen</button></div>
+  </form>`, (d, fertig) => {
+    const f = d.querySelector('form');
+    setTimeout(() => f.b.select(), 30);
+    f.addEventListener('submit', e => {
+      e.preventDefault();
+      const nb = +f.b.value, nl = +f.l.value;
+      if (nb >= 5 && nl >= 5) fertig({ b: nb, l: nl });
+    });
+  });
+}
