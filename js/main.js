@@ -59,7 +59,7 @@ function zeichneSeite() {
   const q = art === 'suche' ? wert : '';
   side.innerHTML = `
     <div class="side-oben">
-      <img class="logo" src="icons/logo-walz.png" alt="WALZ">
+      <img class="logo" src="icons/logo-walz.svg" alt="WALZ">
       <button class="rund" data-a="einstellungen" aria-label="Einstellungen" title="Einstellungen">${SVG.gear}</button>
     </div>
     <label class="suche">${SVG.lupe}<input type="search" id="suche" placeholder="Suchen" value="${esc(q)}" autocomplete="off" enterkeyhint="search"></label>
