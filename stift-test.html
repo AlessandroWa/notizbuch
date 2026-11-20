@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Stift Test</title>
+<style>
+/* VOICE: ruhig, werkzeughaft, wie ein gutes Notizbuch
+   IDEA: eine Seite Schreibpapier mit schmaler Werkzeugleiste
+   PICTURE: die Schreibfläche selbst, fast bildschirmfüllend
+   COLOUR and TYPE: weißes Papier, Graphit-Leiste, Akzent Tintenblau; Systemschrift
+   LAYOUT: Leiste oben, Papier darunter bis zum Rand */
+:root{color-scheme:light dark;--bg:light-dark(#e9ebee,#16181c);--bar:light-dark(#ffffff,#22252b);--ink:light-dark(#1b1d21,#eef0f3);--mute:light-dark(#6b7078,#9aa0a8);--line:light-dark(#d5d9df,#353a42);--acc:#1f5fd6}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;display:flex;flex-direction:column}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px max(12px,env(safe-area-inset-left));background:var(--bar);border-bottom:1px solid var(--line)}
+.grp{display:flex;gap:4px;align-items:center;padding-right:8px;border-right:1px solid var(--line)}
+.grp:last-of-type{border-right:0}
+button{font:inherit;color:var(--ink);background:transparent;border:1px solid transparent;border-radius:10px;min-width:44px;height:44px;padding:0 10px;cursor:pointer;touch-action:manipulation}
+button:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+button[aria-pressed=true]{background:light-dark(#e6eefc,#2a3550);border-color:var(--acc)}
+.dot{display:block;width:20px;height:20px;border-radius:50%;margin:auto}
+.w{display:block;margin:auto;border-radius:9px;background:var(--ink)}
+.stat{margin-left:auto;color:var(--mute);font-size:13px;white-space:nowrap}
+.wrap{position:relative;flex:1;margin:10px;border-radius:6px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.12),0 8px 24px rgba(0,0,0,.08);background:#fff}
+.wrap.lin{background:#fff repeating-linear-gradient(to bottom,transparent 0 31px,#cfdcef 31px 32px)}
+.wrap.kar{background:#fff;background-image:linear-gradient(#e1e7f0 1px,transparent 1px),linear-gradient(90deg,#e1e7f0 1px,transparent 1px);background-size:24px 24px}
+canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+.hint{position:absolute;left:0;right:0;top:40%;text-align:center;color:#9aa3b0;font-size:17px;pointer-events:none;transition:opacity .3s}
+@media(max-width:600px){.stat{display:none}.grp{padding-right:4px}}
+@media(prefers-reduced-motion:reduce){.hint{transition:none}}
+</style>
+</head>
+<body>
+<div class="bar" role="toolbar" aria-label="Werkzeuge">
+  <div class="grp" id="colors"></div>
+  <div class="grp" id="widths"></div>
+  <div class="grp">
+    <button id="eraser" aria-pressed="false" title="Radierer">Radierer</button>
+    <button id="undo" title="Rückgängig">↶</button>
+    <button id="clear" title="Seite leeren">Leeren</button>
+  </div>
+  <div class="grp">
+    <button id="paper" title="Papier wechseln">Liniert</button>
+    <button id="penonly" aria-pressed="true" title="Finger ignorieren, nur Stift zeichnet">Nur Stift</button>
+  </div>
+  <span class="stat" id="stat">Noch kein Strich</span>
+</div>
+<div class="wrap lin" id="wrap">
+  <canvas id="base"></canvas>
+  <canvas id="live"></canvas>
+  <div class="hint" id="hint">Schreib hier mit dem Apple Pencil</div>
+</div>
+<script>
+{
+const COLORS=['#1b1d21','#1f5fd6','#d23a2f','#1d8a4e'];
+const WIDTHS=[1.6,2.6,4.2];
+const PAPERS=[['lin','Liniert'],['kar','Kariert'],['','Blanko']];
+const wrap=document.getElementById('wrap'),base=document.getElementById('base'),live=document.getElementById('live');
+const bctx=base.getContext('2d',{desynchronized:true})||base.getContext('2d');
+const lctx=live.getContext('2d',{desynchronized:true})||live.getContext('2d');
+const stat=document.getElementById('stat'),hint=document.getElementById('hint');
+let color=COLORS[0],width=WIDTHS[1],erasing=false,penOnly=true,paper=0;
+let strokes=[],cur=null,dpr=1,evCount=0,evT0=0,lastRate=0,lastPressure=0,lastType='';
+
+const colorsEl=document.getElementById('colors');
+colorsEl.innerHTML=COLORS.map((c,i)=>`<button data-c="${i}" aria-pressed="${i===0}" title="Farbe"><span class="dot" style="background:${c}"></span></button>`).join('');
+const widthsEl=document.getElementById('widths');
+widthsEl.innerHTML=WIDTHS.map((w,i)=>`<button data-w="${i}" aria-pressed="${i===1}" title="Strichstärke"><span class="w" style="width:${w*2+4}px;height:${w*2+4}px"></span></button>`).join('');
+
+function press(group,btn){for(const b of group.querySelectorAll('button'))b.setAttribute('aria-pressed',b===btn)}
+colorsEl.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;color=COLORS[+b.dataset.c];press(colorsEl,b);setEraser(false)});
+widthsEl.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;width=WIDTHS[+b.dataset.w];press(widthsEl,b);setEraser(false)});
+const eraserBtn=document.getElementById('eraser');
+function setEraser(v){erasing=v;eraserBtn.setAttribute('aria-pressed',v)}
+eraserBtn.addEventListener('click',()=>setEraser(!erasing));
+document.getElementById('undo').addEventListener('click',()=>{strokes.pop();redraw()});
+const clearBtn=document.getElementById('clear');let clearArm=0;
+clearBtn.addEventListener('click',()=>{
+  if(Date.now()-clearArm<2500){strokes=[];redraw();clearBtn.textContent='Leeren';clearArm=0;return}
+  clearArm=Date.now();clearBtn.textContent='Sicher?';setTimeout(()=>{clearBtn.textContent='Leeren'},2500)});
+const paperBtn=document.getElementById('paper');
+paperBtn.addEventListener('click',()=>{paper=(paper+1)%PAPERS.length;wrap.className='wrap '+PAPERS[paper][0];paperBtn.textContent=PAPERS[paper][1]});
+const penBtn=document.getElementById('penonly');
+penBtn.addEventListener('click',()=>{penOnly=!penOnly;penBtn.setAttribute('aria-pressed',penOnly)});
+
+function resize(){
+  dpr=window.devicePixelRatio||1;
+  const r=wrap.getBoundingClientRect();
+  for(const c of [base,live]){c.width=Math.round(r.width*dpr);c.height=Math.round(r.height*dpr)}
+  for(const x of [bctx,lctx]){x.setTransform(dpr,0,0,dpr,0,0);x.lineCap='round';x.lineJoin='round'}
+  redraw();
+}
+const ro=new ResizeObserver(resize);ro.observe(wrap);
+
+function wOf(s,p){return s.w*(0.35+0.9*(p.p??0.5))}
+function seg(ctx,s,a,b,c){
+  // quadratic segment from mid(a,b) to mid(b,c) with control b
+  ctx.strokeStyle=s.c;ctx.lineWidth=wOf(s,b);
+  ctx.beginPath();ctx.moveTo((a.x+b.x)/2,(a.y+b.y)/2);ctx.quadraticCurveTo(b.x,b.y,(b.x+c.x)/2,(b.y+c.y)/2);ctx.stroke();
+}
+function startDot(ctx,s,p){ctx.fillStyle=s.c;ctx.beginPath();ctx.arc(p.x,p.y,wOf(s,p)/2,0,Math.PI*2);ctx.fill()}
+function drawStroke(ctx,s,from){
+  const P=s.pts;if(!P.length)return;
+  if(from===0)startDot(ctx,s,P[0]);
+  if(P.length===2&&from<=1){ctx.strokeStyle=s.c;ctx.lineWidth=wOf(s,P[1]);ctx.beginPath();ctx.moveTo(P[0].x,P[0].y);ctx.lineTo((P[0].x+P[1].x)/2,(P[0].y+P[1].y)/2);ctx.stroke()}
+  for(let i=Math.max(1,from);i<P.length-1;i++)seg(ctx,s,P[i-1],P[i],P[i+1]);
+}
+function finishTail(ctx,s){const P=s.pts,n=P.length;if(n<2)return;const a=P[n-2],b=P[n-1];ctx.strokeStyle=s.c;ctx.lineWidth=wOf(s,b);ctx.beginPath();ctx.moveTo((a.x+b.x)/2,(a.y+b.y)/2);ctx.lineTo(b.x,b.y);ctx.stroke()}
+function redraw(){
+  const r=wrap.getBoundingClientRect();
+  bctx.clearRect(0,0,r.width,r.height);lctx.clearRect(0,0,r.width,r.height);
+  for(const s of strokes){drawStroke(bctx,s,0);finishTail(bctx,s)}
+  hint.style.opacity=strokes.length?0:1;
+}
+function pt(e){const r=base.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top,p:e.pointerType==='pen'?(e.pressure||0.5):0.5}}
+
+function eraseAt(p){
+  const R=12,before=strokes.length;
+  strokes=strokes.filter(s=>!s.pts.some(q=>Math.hypot(q.x-p.x,q.y-p.y)<R+s.w));
+  if(strokes.length!==before)redraw();
+}
+let drawn=0;
+function allowed(e){return !(penOnly&&e.pointerType==='touch')}
+live.addEventListener('pointerdown',e=>{
+  if(!allowed(e))return;
+  e.preventDefault();live.setPointerCapture(e.pointerId);
+  lastType=e.pointerType;evCount=0;evT0=performance.now();
+  const p=pt(e);
+  if(erasing||e.button===5){cur={erase:true};eraseAt(p);return}
+  cur={c:color,w:width,pts:[p]};drawn=0;
+  startDot(bctx,cur,p);hint.style.opacity=0;
+});
+live.addEventListener('pointermove',e=>{
+  if(!cur||!allowed(e))return;
+  e.preventDefault();
+  const evs=e.getCoalescedEvents?e.getCoalescedEvents():[e];
+  evCount+=evs.length||1;
+  if(cur.erase){for(const ev of (evs.length?evs:[e]))eraseAt(pt(ev));return}
+  for(const ev of (evs.length?evs:[e])){const p=pt(ev);const L=cur.pts[cur.pts.length-1];if(Math.hypot(p.x-L.x,p.y-L.y)>=0.6)cur.pts.push(p);lastPressure=p.p}
+  drawStroke(bctx,cur,Math.max(1,drawn));drawn=Math.max(1,cur.pts.length-1);
+  // live layer: tail plus predicted points to hide latency
+  const r=wrap.getBoundingClientRect();lctx.clearRect(0,0,r.width,r.height);
+  const pred=e.getPredictedEvents?e.getPredictedEvents():[];
+  const tail=[...cur.pts.slice(-2),...pred.map(pt)];
+  if(tail.length>1){lctx.strokeStyle=cur.c;lctx.beginPath();lctx.moveTo((tail[0].x+tail[1].x)/2,(tail[0].y+tail[1].y)/2);for(let i=1;i<tail.length;i++){lctx.lineWidth=wOf(cur,tail[i]);lctx.lineTo(tail[i].x,tail[i].y)}lctx.stroke()}
+},{passive:false});
+function end(e){
+  if(!cur)return;
+  const r=wrap.getBoundingClientRect();lctx.clearRect(0,0,r.width,r.height);
+  if(!cur.erase){finishTail(bctx,cur);strokes.push(cur)}
+  const dt=(performance.now()-evT0)/1000;lastRate=dt>0.05?Math.round(evCount/dt):lastRate;
+  const typ={pen:'Stift',touch:'Finger',mouse:'Maus'}[lastType]||lastType;
+  stat.textContent=`${typ} erkannt · ${lastRate} Punkte/s · Druck ${lastPressure.toFixed(2)}`;
+  cur=null;
+}
+live.addEventListener('pointerup',end);live.addEventListener('pointercancel',end);
+for(const t of ['touchstart','touchmove'])live.addEventListener(t,e=>{if(e.touches.length===1)e.preventDefault()},{passive:false});
+document.addEventListener('gesturestart',e=>e.preventDefault());
+}
+</script>
+</body>
+</html>
