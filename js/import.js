@@ -16,7 +16,7 @@ export async function importiere(dateien, zielOrdner, melde) {
       melde('ZIP wird gelesen …', null, d.name);
       const eintraege = (await liesInhalt(d)).filter(e => !e.ordner && istPdf(e.name));
       for (const e of eintraege) {
-        let teile = e.name.split('/').filter(Boolean);
+        let teile = e.name.normalize('NFC').split('/').filter(Boolean); // Mac-ZIPs schreiben Umlaute zerlegt
         if (versteckt(teile)) continue;
         if (teile.length > 1 && teile[0].toLowerCase() === 'notability') teile = teile.slice(1);
         auftraege.push({
@@ -25,7 +25,7 @@ export async function importiere(dateien, zielOrdner, melde) {
         });
       }
     } else if (istPdf(d.name) || d.type === 'application/pdf') {
-      auftraege.push({ pfad: null, titel: ohneEndung(d.name), datum: d.lastModified || Date.now(), quelle: null, blob: async () => d });
+      auftraege.push({ pfad: null, titel: ohneEndung(d.name.normalize('NFC')), datum: d.lastModified || Date.now(), quelle: null, blob: async () => d });
     }
   }
   if (!auftraege.length) throw new Error('Keine PDF-Dateien gefunden.');
