@@ -3,7 +3,27 @@
 Persönliches Notizbuch nach dem Vorbild von Notability, für iPad mit Apple Pencil und Windows-PC.
 Web-App (PWA), läuft komplett offline, alle Daten bleiben auf dem Gerät. Bauplan: siehe `BAUPLAN.md`.
 
-## Stand: Version 0.4.0
+## Stand: Version 0.5.0
+
+### Neu in 0.5.0: OneDrive-Abgleich
+- Alles wird im OneDrive-Ordner **„Notizbuch“** gespeichert: `index.json` (Ordner), `notizen/<id>.json` (je Notiz),
+  `dateien/<id>` (PDFs, Fotos).
+- Hochladen wenige Sekunden nach jeder Änderung, offline gesammelt bis wieder Netz da ist.
+  Holen beim Start, beim Zurückkehren in die App und alle 5 Minuten.
+- Konflikt (gleiche Notiz auf zwei Geräten offline geändert): neuere gewinnt, ältere bleibt als „(Konflikt)“.
+- Gelöscht wird auf anderen Geräten nur, wenn in der App gelöscht wurde; fehlt eine Datei in OneDrive, wird sie neu hochgeladen.
+- Statuszeile unten in der Seitenleiste, Einstellungen › OneDrive-Abgleich.
+
+### Einrichtung OneDrive (einmalig, im Microsoft-Konto der Firma)
+1. https://entra.microsoft.com › Anwendungen › App-Registrierungen › **Neue Registrierung**
+2. Name `Notizbuch`, Kontotyp **Nur Konten in diesem Organisationsverzeichnis**
+3. Umleitungs-URI: Plattform **Single-Page-Anwendung (SPA)**, `https://alessandrowa.github.io/notizbuch/`
+4. API-Berechtigungen › Microsoft Graph › Delegiert: `Files.ReadWrite`, `offline_access` (`User.Read` ist schon da),
+   ggf. **Administratorzustimmung erteilen**
+5. Die **Anwendungs-ID (Client)** in der App unter Einstellungen › OneDrive-Abgleich › Einrichtung eintragen
+   (oder fest in `js/sync.js`, `STANDARD_CLIENT_ID`). Mandant ist `marmor-walz.de`.
+6. „Bei OneDrive anmelden“. Microsoft hält Web-Apps nur 24 h angemeldet, danach ggf. kurz neu anmelden.
+
 
 ### Neu in 0.4.0
 - **Vorlage „Beratungsgespräch“** (Neu › Vorlage): Kunde, Adresse, Telefon/E-Mail, Worum geht es, Interesse,
@@ -64,6 +84,7 @@ Reines HTML/CSS/JavaScript (ES-Module), kein Framework, kein Build. Hosting: Git
 | `js/vorschau.js` | Vorschaubild der ersten Seite |
 | `js/vorlagen.js` | Vorlagen (Beratungsgespräch) |
 | `js/pdfexport.js` | Notiz als PDF |
+| `js/sync.js` | OneDrive-Abgleich (Anmeldung, Microsoft Graph) |
 | `js/objekte.js` | Sanitär-Symbole, Linien, Rechtecke, Maße: zeichnen, treffen, einrasten |
 | `vendor/pdfjs/` | pdf.js 4.10.38 (Mozilla, Apache 2.0) |
 | `sw.js` | Offline (Service Worker) |
@@ -77,11 +98,12 @@ Reines HTML/CSS/JavaScript (ES-Module), kein Framework, kein Build. Hosting: Git
   - `objects[]`: Kasten `{id, typ: 'symbol'|'rechteck'|'bild'|'text', art?, x, y (Mitte), w, h, rot, spiegel, fileId?, text?, gr?}` oder
     Linie `{id, typ: 'linie'|'mass', x1, y1, x2, y2, c, lw}`; später auch Bilder und Textfelder
   - `massstab`: 10/20/25/50 (Standard 20)
+- Notiz zusätzlich `syncAt` (letzte Änderung für den Abgleich); `meta`: `geloescht` (Grabsteine), `syncstand`, `onedrive` (Anmeldung)
 - `thumbs`: `{noteId, blob}` Vorschaubild, `files`: `{id, noteId, name, type, blob}` PDFs (später Fotos), `meta`
 
 ## Neue Version veröffentlichen
 1. `VERSION` in `js/util.js` **und** `sw.js` erhöhen (sonst bekommen installierte Geräte die Änderung nicht).
-2. Tests: `node test/smoke.mjs`, `node test/import.mjs`, `node test/skizze.mjs`, `node test/funktionen.mjs` (brauchen Playwright).
+2. Tests: `node test/smoke.mjs`, `node test/import.mjs`, `node test/skizze.mjs`, `node test/funktionen.mjs`, `node test/onedrive.mjs` (brauchen Playwright; OneDrive wird im Test nachgestellt).
 3. Auf GitHub pushen; GitHub Pages veröffentlicht automatisch.
 
 ## Lokal starten

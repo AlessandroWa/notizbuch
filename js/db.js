@@ -51,6 +51,7 @@ async function mitWiederholung(fn) {
 }
 
 export const getAll = s => mitWiederholung(d => asP(d.transaction(s).objectStore(s).getAll()));
+export const keys = s => mitWiederholung(d => asP(d.transaction(s).objectStore(s).getAllKeys()));
 export const get = (s, k) => mitWiederholung(d => asP(d.transaction(s).objectStore(s).get(k)));
 
 // Schreibvorgang über mehrere Stores in einer Transaktion: fn bekommt {store: ObjectStore}.

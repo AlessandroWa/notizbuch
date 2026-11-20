@@ -1,11 +1,11 @@
 // Service Worker: hält die App offline verfügbar. Bei jeder neuen Version VERSION erhöhen
 // (gleiche Nummer wie in js/util.js), sonst bekommen installierte Geräte die Änderung nicht.
-const VERSION = '0.4.0';
+const VERSION = '0.5.0';
 const CACHE = 'notizbuch-' + VERSION;
 const DATEIEN = [
   './', 'index.html', 'app.css', 'manifest.webmanifest',
   'js/main.js', 'js/ui.js', 'js/store.js', 'js/db.js', 'js/ink.js', 'js/editor.js', 'js/backup.js', 'js/util.js',
-  'js/zip.js', 'js/pdf.js', 'js/import.js', 'js/vorschau.js', 'js/objekte.js', 'js/vorlagen.js', 'js/pdfexport.js',
+  'js/zip.js', 'js/pdf.js', 'js/import.js', 'js/vorschau.js', 'js/objekte.js', 'js/vorlagen.js', 'js/pdfexport.js', 'js/sync.js',
   'vendor/pdfjs/pdf.min.mjs', 'vendor/pdfjs/pdf.worker.min.mjs',
   'vendor/pdfjs/standard_fonts/FoxitDingbats.pfb',
   'vendor/pdfjs/standard_fonts/FoxitFixed.pfb',

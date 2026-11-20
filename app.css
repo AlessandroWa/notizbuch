@@ -50,6 +50,14 @@ a { color: inherit; }
 }
 .baum-zeile:hover { background: rgba(255,255,255,.05); }
 .baum-zeile.aktiv { background: var(--aktiv); font-weight: 700; }
+.sync-zeile { display: block; width: 100%; margin-top: 18px; padding: 10px 12px; border-radius: 10px; text-align: left; font-size: 13px; color: var(--mute); background: rgba(255,255,255,.04); }
+.sync-zeile.warnung { color: #f0b37e; }
+.einst .erweitert { margin: 14px 0 8px; color: var(--mute); }
+.einst .erweitert summary { cursor: pointer; padding: 6px 0; }
+.einst .erweitert label { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; font-size: 14px; }
+.einst .erweitert input { height: 44px; padding: 0 12px; font: inherit; color: var(--text); background: var(--bg); border: 1.5px solid var(--rand2); border-radius: 10px; }
+.einst .klein { font-size: 13px; }
+.einst code { -webkit-user-select: all; user-select: all; color: var(--text); }
 .baum-zeile .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chev { width: 40px; height: 40px; display: grid; place-items: center; color: var(--mute); border-radius: 50%; }
 .chev svg { width: 18px; height: 18px; transition: transform .15s; }

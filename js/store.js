@@ -4,7 +4,13 @@ import * as db from './db.js';
 import { uid, datumZeit } from './util.js';
 import { PAGE_W, PAGE_H } from './ink.js';
 
-export const state = { folders: new Map(), notes: new Map() };
+export const state = { folders: new Map(), notes: new Map(), geloescht: { key: 'geloescht', ordner: {}, notizen: {} } };
+
+// Abgleich (OneDrive): jede Änderung meldet sich hier; "syncAt" je Notiz = letzte Änderung (auch Umbenennen/Verschieben).
+let aenderung = () => {};
+export const beiAenderung = fn => { aenderung = fn; };
+const gemeldet = () => { try { aenderung(); } catch { /* egal */ } };
+const stempel = n => ({ ...n, syncAt: Date.now() });
 
 // Gedämpfte Ordnerfarben (passend zum Anthrazit des Logos)
 export const FARBEN = ['#5f8f97', '#8a8687', '#6f8f6a', '#647d99', '#857597', '#9c6b78',
@@ -21,7 +27,8 @@ const START = [
 ];
 
 export async function init() {
-  let [folders, notes, schema] = await Promise.all([db.getAll('folders'), db.getAll('notes'), db.get('meta', 'schema')]);
+  let [folders, notes, schema, geloescht] = await Promise.all([db.getAll('folders'), db.getAll('notes'), db.get('meta', 'schema'), db.get('meta', 'geloescht')]);
+  state.geloescht = geloescht || { key: 'geloescht', ordner: {}, notizen: {} };
   if (!schema) {
     const jetzt = Date.now();
     folders = START.map(([name, color, system], i) => ({
@@ -72,6 +79,7 @@ export async function createFolder({ name, parentId = null, color = FARBEN[1] })
   const f = { id: uid(), name, color, parentId, sort, createdAt: Date.now(), updatedAt: Date.now() };
   await db.put('folders', f);
   state.folders.set(f.id, f);
+  gemeldet();
   return f;
 }
 
@@ -79,6 +87,7 @@ export async function updateFolder(id, patch) {
   const f = { ...folder(id), ...patch, updatedAt: Date.now() };
   await db.put('folders', f);
   state.folders.set(id, f);
+  gemeldet();
   return f;
 }
 
@@ -101,21 +110,29 @@ export function folderInhalt(id) {
   return { ordner: ids.length - 1, notizen: notes.length };
 }
 
+const dateiInBenutzungAusser = (fileId, notes) =>
+  [...state.notes.values()].some(n => !notes.includes(n) && (n.fileIds || []).includes(fileId));
+
 export async function deleteFolder(id) {
   if (folder(id)?.system) throw new Error('Dieser Ordner kann nicht gelöscht werden.');
   const ids = descendants(id);
   const notes = [...state.notes.values()].filter(n => ids.includes(n.folderId));
-  await db.tx(['folders', 'notes', 'pages', 'thumbs', 'files'], o => {
+  const jetzt = Date.now(), g = state.geloescht;
+  for (const fid of ids) g.ordner[fid] = jetzt;
+  for (const n of notes) g.notizen[n.id] = { at: jetzt, fileIds: n.fileIds || [] };
+  await db.tx(['folders', 'notes', 'pages', 'thumbs', 'files', 'meta'], o => {
+    o.meta.put(g);
     for (const fid of ids) o.folders.delete(fid);
     for (const n of notes) {
       o.notes.delete(n.id);
       o.thumbs.delete(n.id);
       for (const p of n.pageIds) o.pages.delete(p);
-      for (const f of n.fileIds || []) o.files.delete(f);
+      for (const f of n.fileIds || []) if (!dateiInBenutzungAusser(f, notes)) o.files.delete(f);
     }
   });
   for (const fid of ids) state.folders.delete(fid);
   for (const n of notes) state.notes.delete(n.id);
+  gemeldet();
 }
 
 // ---------- Notizen ----------
@@ -125,18 +142,20 @@ export function newPage(noteId, paper = 'liniert') {
 
 export async function createNote(folderId, paper = 'liniert') {
   const jetzt = Date.now();
-  const n = { id: uid(), folderId, title: 'Notiz ' + datumZeit(jetzt), pageIds: [], createdAt: jetzt, updatedAt: jetzt };
+  const n = { id: uid(), folderId, title: 'Notiz ' + datumZeit(jetzt), pageIds: [], createdAt: jetzt, updatedAt: jetzt, syncAt: jetzt };
   const p = newPage(n.id, paper);
   n.pageIds.push(p.id);
   await db.tx(['notes', 'pages'], o => { o.notes.put(n); o.pages.put(p); });
   state.notes.set(n.id, n);
+  gemeldet();
   return n;
 }
 
 export async function updateNote(id, patch, { touch = true } = {}) {
-  const n = { ...note(id), ...patch, ...(touch ? { updatedAt: Date.now() } : {}) };
+  const n = stempel({ ...note(id), ...patch, ...(touch ? { updatedAt: Date.now() } : {}) });
   await db.put('notes', n);
   state.notes.set(id, n);
+  gemeldet();
   return n;
 }
 
@@ -145,26 +164,30 @@ export const moveNote = (id, folderId) => updateNote(id, { folderId }, { touch: 
 export async function deleteNote(id) {
   const n = note(id);
   if (!n) return;
-  await db.tx(['notes', 'pages', 'thumbs', 'files'], o => {
+  state.geloescht.notizen[id] = { at: Date.now(), fileIds: n.fileIds || [] };
+  await db.tx(['notes', 'pages', 'thumbs', 'files', 'meta'], o => {
+    o.meta.put(state.geloescht);
     o.notes.delete(id);
     o.thumbs.delete(id);
     for (const p of n.pageIds) o.pages.delete(p);
-    for (const f of n.fileIds || []) o.files.delete(f);
+    for (const f of n.fileIds || []) if (!dateiInBenutzung(f, id)) o.files.delete(f);
   });
   state.notes.delete(id);
+  gemeldet();
 }
 
 // Neue leere Seite am Ende einer Notiz.
 export async function addPage(page) {
-  const n = { ...note(page.noteId), updatedAt: Date.now() };
+  const n = stempel({ ...note(page.noteId), updatedAt: Date.now() });
   n.pageIds = [...n.pageIds, page.id];
   await db.tx(['pages', 'notes'], o => { o.pages.put(page); o.notes.put(n); });
   state.notes.set(n.id, n);
+  gemeldet();
 }
 
 // Notiz aus einer PDF: jede PDF-Seite wird eine Seite (Breite 1000, Höhe nach Seitenverhältnis).
 export async function createPdfNote({ folderId, title, blob, seiten, datum = Date.now(), quelle = null }) {
-  const n = { id: uid(), folderId, title, pageIds: [], fileIds: [], createdAt: datum, updatedAt: datum, ...(quelle ? { quelle } : {}) };
+  const n = { id: uid(), folderId, title, pageIds: [], fileIds: [], createdAt: datum, updatedAt: datum, syncAt: Date.now(), ...(quelle ? { quelle } : {}) };
   const file = { id: uid(), noteId: n.id, name: title + '.pdf', type: 'application/pdf', blob };
   n.fileIds.push(file.id);
   const pages = seiten.map((s, i) => ({
@@ -173,6 +196,7 @@ export async function createPdfNote({ folderId, title, blob, seiten, datum = Dat
   n.pageIds = pages.map(p => p.id);
   await db.tx(['notes', 'pages', 'files'], o => { o.files.put(file); for (const p of pages) o.pages.put(p); o.notes.put(n); });
   state.notes.set(n.id, n);
+  gemeldet();
   return { note: n, pages };
 }
 
@@ -189,7 +213,7 @@ export async function ordnerPfad(parentId, namen) {
 
 // Datei (z. B. Foto) zu einer Notiz speichern, gibt die Datei-ID zurück.
 export async function addFile(noteId, blob, type) {
-  const n = { ...note(noteId) };
+  const n = stempel({ ...note(noteId) });
   const f = { id: uid(), noteId, name: '', type, blob };
   n.fileIds = [...(n.fileIds || []), f.id];
   await db.tx(['files', 'notes'], o => { o.files.put(f); o.notes.put(n); });
@@ -208,9 +232,10 @@ export async function loadPages(n) {
 
 // Eine Seite speichern und die Notiz als geändert markieren (eine Transaktion).
 export async function savePage(page) {
-  const n = { ...note(page.noteId), updatedAt: Date.now() };
+  const n = stempel({ ...note(page.noteId), updatedAt: Date.now() });
   await db.tx(['pages', 'notes'], o => { o.pages.put(page); o.notes.put(n); });
   state.notes.set(n.id, n);
+  gemeldet();
 }
 
 export async function saveThumb(noteId, blob) {
@@ -223,3 +248,44 @@ export async function saveThumb(noteId, blob) {
 }
 
 export const getThumb = noteId => db.get('thumbs', noteId);
+
+// ---------- Für den Abgleich: Änderungen von anderen Geräten übernehmen (ohne neue Änderungsmeldung) ----------
+export const syncMarke = n => n.syncAt || n.updatedAt || 0;
+
+export async function uebernehmeOrdner(liste, weg) {
+  await db.tx(['folders'], o => { for (const f of liste) o.folders.put(f); for (const id of weg) o.folders.delete(id); });
+  for (const f of liste) state.folders.set(f.id, f);
+  for (const id of weg) state.folders.delete(id);
+}
+
+export async function merkeGeloescht(g) {
+  state.geloescht = { ...g, key: 'geloescht' };
+  await db.put('meta', state.geloescht);
+}
+
+// Notiz mit Seiten aus dem Abgleich speichern (ersetzt die lokale Fassung)
+export async function uebernehmeNotiz(n, pages) {
+  const alt = note(n.id);
+  const weg = (alt?.pageIds || []).filter(id => !n.pageIds.includes(id));
+  const neu = alt?.thumbAt ? { ...n, thumbAt: alt.thumbAt } : n;
+  await db.tx(['notes', 'pages'], o => { o.notes.put(neu); for (const p of pages) o.pages.put(p); for (const id of weg) o.pages.delete(id); });
+  state.notes.set(n.id, neu);
+}
+
+export async function entferneNotiz(id) {
+  const n = note(id);
+  if (!n) return;
+  await db.tx(['notes', 'pages', 'thumbs', 'files'], o => {
+    o.notes.delete(id); o.thumbs.delete(id);
+    for (const p of n.pageIds) o.pages.delete(p);
+    for (const f of n.fileIds || []) if (!dateiInBenutzung(f, id)) o.files.delete(f);
+  });
+  state.notes.delete(id);
+}
+
+export const dateiInBenutzung = (fileId, ausser = null) =>
+  [...state.notes.values()].some(n => n.id !== ausser && (n.fileIds || []).includes(fileId));
+
+export async function speichereDatei(f) { await db.put('files', f); }
+export const dateiIds = () => db.keys('files');
+export const datei = id => db.get('files', id);

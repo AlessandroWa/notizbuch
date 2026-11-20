@@ -6,6 +6,7 @@ import { importiere } from './import.js';
 import { VORLAGEN } from './vorlagen.js';
 import { notizAlsPdf } from './pdfexport.js';
 import { makeThumb } from './vorschau.js';
+import * as sync from './sync.js';
 import { openEditor } from './editor.js';
 import { PAPIERE } from './ink.js';
 import { esc, datum, VERSION } from './util.js';
@@ -25,6 +26,7 @@ const SVG = {
 const offen = new Set(JSON.parse(localStorage.getItem('nb.offen') || '[]'));
 const merkeOffen = () => localStorage.setItem('nb.offen', JSON.stringify([...offen]));
 let editor = null;
+let offeneNotiz = null;
 let aktuellerOrdner = null;
 
 const route = () => {
@@ -62,8 +64,32 @@ function zeichneSeite() {
     </div>
     <label class="suche">${SVG.lupe}<input type="search" id="suche" placeholder="Suchen" value="${esc(q)}" autocomplete="off" enterkeyhint="search"></label>
     <div class="side-kopf"><span>Ordner</span><button class="rund" data-a="neuer-ordner" aria-label="Neuer Ordner" title="Neuer Ordner">${SVG.plus}</button></div>
-    <nav class="baum" role="tree" aria-label="Ordner">${zeilen.join('')}</nav>`;
+    <nav class="baum" role="tree" aria-label="Ordner">${zeilen.join('')}</nav>
+    <button class="sync-zeile" id="sync-zeile" data-a="einstellungen" hidden></button>`;
+  zeigeSync();
 }
+
+// Statuszeile OneDrive (unten in der Seitenleiste und in den Einstellungen)
+function syncText() {
+  const st = sync.status;
+  if (!sync.eingerichtet()) return '';
+  if (!st.angemeldet) return st.fehler || 'OneDrive: nicht angemeldet';
+  if (st.laeuft) return 'OneDrive: wird abgeglichen …';
+  if (st.fehler) return st.fehler;
+  if (!navigator.onLine) return st.ausstehend ? 'Offline: Änderungen werden später hochgeladen' : 'Offline';
+  if (st.ausstehend) return 'OneDrive: Änderungen werden hochgeladen …';
+  if (st.zuletzt) return 'OneDrive: abgeglichen ' + new Date(st.zuletzt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  return 'OneDrive: verbunden';
+}
+function zeigeSync() {
+  const t = syncText();
+  const z = document.getElementById('sync-zeile');
+  if (z) { z.hidden = !t; z.textContent = t; z.classList.toggle('warnung', !!sync.status.fehler || !sync.status.angemeldet); }
+  const e = document.getElementById('sync-status');
+  if (e) e.textContent = t || 'Noch nicht eingerichtet.';
+}
+window.addEventListener('online', zeigeSync);
+window.addEventListener('offline', zeigeSync);
 
 side.addEventListener('click', async e => {
   const a = e.target.closest('[data-a]')?.dataset.a;
@@ -144,6 +170,20 @@ function zeichneSuche(q) {
 async function zeichneEinstellungen() {
   main.innerHTML = kopf('<span>Einstellungen</span>', '') + `<h1>Einstellungen</h1>
   <section class="einst">
+    <h2>OneDrive-Abgleich</h2>
+    ${sync.eingerichtet() ? `
+      <p id="sync-status"></p>
+      <p>${sync.status.angemeldet ? `Angemeldet${sync.status.konto ? ' als ' + esc(sync.status.konto) : ''}. Alles wird im OneDrive-Ordner „Notizbuch“ gespeichert und mit deinen anderen Geräten abgeglichen.` : 'Mit dem Firmenkonto anmelden, dann werden alle Notizen automatisch im OneDrive-Ordner „Notizbuch“ gespeichert.'}</p>
+      <div class="reihe">${sync.status.angemeldet
+        ? '<button class="knopf primaer" data-a="sync-jetzt">Jetzt abgleichen</button><button class="knopf" data-a="sync-ab">Abmelden</button>'
+        : '<button class="knopf primaer" data-a="sync-an">Bei OneDrive anmelden</button>'}</div>`
+    : `<p>Noch nicht eingerichtet. Dafür muss die App einmal im Microsoft-Konto der Firma registriert werden (Anleitung in der README auf GitHub). Danach hier die Anwendungs-ID (Client-ID) eintragen.</p>`}
+    <details class="erweitert"${sync.eingerichtet() ? '' : ' open'}><summary>Einrichtung (Client-ID)</summary>
+      <label>Anwendungs-ID (Client)<input id="sync-client" value="${esc(sync.konfig().clientId)}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off"></label>
+      <label>Verzeichnis (Mandant)<input id="sync-mandant" value="${esc(sync.konfig().mandant)}" autocomplete="off"></label>
+      <p class="klein">Umleitungs-URI für die Registrierung: <code>${esc(sync.rueckAdresse())}</code></p>
+      <button class="knopf" data-a="sync-konfig">Speichern</button>
+    </details>
     <h2>Aus Notability übernehmen</h2>
     <p>In OneDrive den Ordner „Notability“ herunterladen (ergibt eine ZIP-Datei) und hier auswählen. Die Ordner werden übernommen, jede PDF wird eine Notiz, auf der du weiterschreiben kannst. Schon übernommene Notizen werden beim nächsten Mal übersprungen, du kannst also jederzeit nachholen.</p>
     <div class="reihe"><button class="knopf primaer" data-a="notability">ZIP oder PDFs auswählen …</button></div>
@@ -163,6 +203,7 @@ async function zeichneEinstellungen() {
   const dauer = sm?.persisted ? await sm.persisted() : false;
   const est = sm?.estimate ? await sm.estimate() : null;
   const mb = b => (b / 1048576).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' MB';
+  zeigeSync();
   p.innerHTML = (dauer ? '✅ Dauerhafter Speicher ist aktiv: das System löscht die Daten nicht von selbst.'
     : '⚠️ Dauerhafter Speicher ist (noch) nicht bestätigt. Auf dem iPad die App über „Zum Home-Bildschirm“ installieren und von dort öffnen; trotzdem regelmäßig sichern.')
     + (est ? `<br>Belegt: ${mb(est.usage || 0)}${est.quota ? ' von ca. ' + mb(est.quota) : ''}` : '');
@@ -174,6 +215,7 @@ async function oeffneNotiz(id) {
   const pages = await store.loadPages(n);
   if (route().art !== 'notiz' || route().wert !== id) return; // inzwischen weg-navigiert
   document.body.classList.add('schreiben');
+  offeneNotiz = id;
   main.innerHTML = '';
   editor = openEditor(main, {
     note: n, pages,
@@ -221,6 +263,16 @@ main.addEventListener('click', async e => {
   if (a === 'ordner-menue') return ordnerMenue(el, aktuellerOrdner);
   if (a === 'notiz-menue') return notizMenue(el, nid);
   if (a === 'sicherung') return exportieren(el);
+  if (a === 'sync-an') return sync.anmelden();
+  if (a === 'sync-ab') { if (await ui.bestaetige('Von OneDrive abmelden? Die Daten auf diesem Gerät bleiben erhalten, werden aber nicht mehr abgeglichen.', 'Abmelden')) { await sync.abmelden(); render(); } return; }
+  if (a === 'sync-jetzt') { await sync.abgleichen(); return render(); }
+  if (a === 'sync-konfig') {
+    const id = document.getElementById('sync-client').value.trim(), m = document.getElementById('sync-mandant').value.trim();
+    if (id && !/^[0-9a-f-]{36}$/i.test(id)) return ui.meldung('Die Anwendungs-ID sieht nicht richtig aus (Format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).');
+    sync.setzeKonfig(id, m);
+    await ui.meldung(id ? 'Gespeichert. Jetzt „Bei OneDrive anmelden“ tippen.' : 'Gespeichert.');
+    return render();
+  }
   if (a === 'import') return document.getElementById('import-datei').click();
   if (a === 'notability') return waehleDateien('.zip,.pdf,application/zip,application/pdf', d => uebernehme(d, store.todoId()));
 });
@@ -402,7 +454,7 @@ function zeichneHaupt() {
 let laeuft = Promise.resolve();
 function render() {
   laeuft = laeuft.then(async () => {
-    if (editor) { const e = editor; editor = null; await e.close(); }
+    if (editor) { const e = editor; editor = null; await e.close(); offeneNotiz = null; sync.geaendert(); }
     document.body.classList.remove('schreiben');
     const { art, wert } = route();
     if (art === 'notiz') return oeffneNotiz(wert);
@@ -422,8 +474,25 @@ function render() {
     return;
   }
   navigator.storage?.persist?.().catch(() => {});
+  try { await sync.nachAnmeldung(); } catch (err) { console.warn(err); }
+  store.beiAenderung(sync.geaendert);
+  window.notizbuchSync = sync; // für Tests und Fehlersuche
+  sync.beiStatus(zeigeSync);
   window.addEventListener('hashchange', render);
   render();
+  sync.start({
+    gesperrt: () => offeneNotiz,
+    nachAbgleich: async ids => {
+      for (const id of ids) {
+        const n = store.note(id);
+        if (!n) continue;
+        try { const [p] = await store.loadPages(n); await store.saveThumb(id, await makeThumb(p)); } catch { /* Vorschau später */ }
+      }
+      const { art } = route();
+      if (art === 'ordner' || art === 'suche') render();
+      else if (art !== 'notiz') zeichneSeite();
+    },
+  });
   if ('serviceWorker' in navigator && location.protocol === 'https:' || location.hostname === 'localhost') {
     navigator.serviceWorker?.register('./sw.js').catch(err => console.warn('Service Worker:', err));
   }
