@@ -1,6 +1,6 @@
 // Service Worker: hält die App offline verfügbar. Bei jeder neuen Version VERSION erhöhen
 // (gleiche Nummer wie in js/util.js), sonst bekommen installierte Geräte die Änderung nicht.
-const VERSION = '0.5.6';
+const VERSION = '0.5.7';
 const CACHE = 'notizbuch-' + VERSION;
 const DATEIEN = [
   './', 'index.html', 'app.css', 'manifest.webmanifest',

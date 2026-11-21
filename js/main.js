@@ -111,6 +111,28 @@ side.addEventListener('input', e => {
   history.replaceState(null, '', h);
   zeichneHaupt();
 });
+// ---------- Updates ----------
+// Neue Version liegt bereit, sobald der neue Service Worker übernimmt. Dann neu laden – aber nie mitten
+// im Schreiben: im Editor wird gewartet, bis die Notiz verlassen wird.
+let swReg = null, updateBereit = false;
+async function updatesEinrichten() {
+  const hatteSchon = !!navigator.serviceWorker.controller;
+  try { swReg = await navigator.serviceWorker.register('./sw.js'); } catch (err) { console.warn('Service Worker:', err); return; }
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hatteSchon) return; // allererste Installation: nichts zu tun
+    updateBereit = true;
+    if (!editor) location.reload();
+    else hinweis('Neue Version geladen – wird nach dem Schließen der Notiz aktiv');
+  });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') swReg?.update().catch(() => {}); });
+}
+async function nachUpdateSuchen() {
+  if (!swReg) return ui.meldung('Updates gibt es nur in der installierten App (über https).');
+  hinweis('Suche nach Update …');
+  try { await swReg.update(); } catch { return ui.meldung('Keine Verbindung. Bitte später nochmal versuchen.'); }
+  setTimeout(() => { if (!updateBereit && !swReg.installing && !swReg.waiting) ui.meldung(`Du hast die neueste Version (${VERSION}).`); }, 2500);
+}
+
 // Kurzer Hinweis unten in der Mitte
 function hinweis(text) {
   let t = document.getElementById('hinweis');
@@ -207,7 +229,8 @@ async function zeichneEinstellungen() {
     <h2>Speicher</h2>
     <p id="speicher">Wird geprüft …</p>
     <h2>App</h2>
-    <p>Version ${VERSION} · läuft komplett offline, alle Daten bleiben auf diesem Gerät.<br>
+    <p>Version ${VERSION} · läuft komplett offline, alle Daten bleiben auf diesem Gerät.
+    <button class="knopf" data-a="update" style="margin-left:8px">Nach Update suchen</button><br>
     ${store.state.folders.size} Ordner · ${store.state.notes.size} Notizen</p>
   </section>`;
   const p = document.getElementById('speicher');
@@ -285,6 +308,7 @@ main.addEventListener('click', async e => {
     await ui.meldung(`Fertig: ${r.notizen} Notizen geprüft, ${r.verschoben} zurückgelegt${r.doppelt ? `, ${r.doppelt} doppelte entfernt` : ''}${r.weg ? `, ${r.weg} leere Ordner aufgeräumt` : ''}.`);
     return geh('#/ordner/' + store.todoId());
   }
+  if (a === 'update') return nachUpdateSuchen();
   if (a === 'sync-an') return sync.anmelden();
   if (a === 'sync-ab') { if (await ui.bestaetige('Von OneDrive abmelden? Die Daten auf diesem Gerät bleiben erhalten, werden aber nicht mehr abgeglichen.', 'Abmelden')) { await sync.abmelden(); render(); } return; }
   if (a === 'sync-jetzt') { await sync.abgleichen(); return render(); }
@@ -484,7 +508,7 @@ function zeichneHaupt() {
 let laeuft = Promise.resolve();
 function render() {
   laeuft = laeuft.then(async () => {
-    if (editor) { const e = editor; editor = null; await e.close(); offeneNotiz = null; sync.geaendert(); }
+    if (editor) { const e = editor; editor = null; await e.close(); offeneNotiz = null; sync.geaendert(); if (updateBereit) { location.reload(); return; } }
     document.body.classList.remove('schreiben');
     const { art, wert } = route();
     if (art === 'notiz') return oeffneNotiz(wert);
@@ -528,8 +552,6 @@ function render() {
       else if (art !== 'notiz') zeichneSeite();
     },
   });
-  if ('serviceWorker' in navigator && location.protocol === 'https:' || location.hostname === 'localhost') {
-    navigator.serviceWorker?.register('./sw.js').catch(err => console.warn('Service Worker:', err));
-  }
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) updatesEinrichten();
 })();
 document.addEventListener('gesturestart', e => e.preventDefault());
