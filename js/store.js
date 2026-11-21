@@ -20,6 +20,7 @@ const ALTE_FARBEN = ['#0e8fa3', '#5b6270', '#2e9d3a', '#1f5fd6', '#7b3fc4', '#c2
   '#e91e63', '#e53935', '#f57c00', '#f2b705', '#795548', '#37474f'];
 
 const [PETROL, GRAU, GRUEN, , , BEERE, ROSE, ZIEGEL, OCKER, , , SCHIEFER] = FARBEN;
+export const START_NAMEN = () => START.map(s => s[0]);
 const START = [
   ['To Do', PETROL, 'todo'], ['Auftrag', GRAU], ['Offen', GRAU], ['Abgeschlossene BV', GRAU],
   ['Whirlpools', BEERE], ['Team-Meeting', ROSE], ['Ablage', GRUEN], ['Ausstellung', ZIEGEL],
@@ -158,7 +159,7 @@ export async function einsortieren(id) {
   return { ordner, notizen };
 }
 
-async function entferneLeer(id) {
+export async function entferneLeer(id) {
   if (children(id).length || notesIn(id).length) return;
   state.geloescht.ordner[id] = Date.now();
   await db.tx(['folders', 'meta'], o => { o.folders.delete(id); o.meta.put(state.geloescht); });

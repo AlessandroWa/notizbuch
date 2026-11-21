@@ -77,3 +77,61 @@ export async function importiere(dateien, zielOrdner, melde) {
   erg.ordner = store.state.folders.size - erg.ordnerVorher;
   return erg;
 }
+
+// ---------- Ordnung wie in Notability wiederherstellen ----------
+// Jede übernommene Notiz kennt ihren Notability-Pfad ("quelle"). Damit wird sie an ihren Platz
+// zurückgelegt, auch wenn sie inzwischen verschoben wurde. Doppelte ohne eigene Handschrift fallen weg,
+// leer gewordene Ordner werden aufgeräumt (die Startordner wie "Auftrag" bleiben).
+const HUELLE = /^(notability|onedrive)/i;
+export function notabilityPfad(quelle) {
+  let t = quelle.slice('notability:'.length).split('/').filter(Boolean);
+  while (t.length > 1 && HUELLE.test(t[0])) t = t.slice(1);
+  return t; // [Ordner …, Dateiname]
+}
+
+export async function ordnungWiederherstellen(melde = () => {}) {
+  const notes = [...store.state.notes.values()].filter(n => n.quelle?.startsWith('notability:'));
+  const gruppen = new Map();
+  for (const n of notes) {
+    const k = notabilityPfad(n.quelle).join('/').toLocaleLowerCase('de');
+    if (!gruppen.has(k)) gruppen.set(k, []);
+    gruppen.get(k).push(n);
+  }
+  let verschoben = 0, doppelt = 0, i = 0;
+  for (const liste of gruppen.values()) {
+    melde(`Notiz ${++i} von ${gruppen.size}`, i / gruppen.size);
+    const bewertet = [];
+    for (const n of liste) {
+      const pages = await store.loadPages(n);
+      bewertet.push({ n, eigen: pages.reduce((s, p) => s + p.strokes.length + (p.objects || []).length, 0) });
+    }
+    bewertet.sort((a, b) => b.eigen - a.eigen || store.syncMarke(b.n) - store.syncMarke(a.n));
+    const [behalte, ...rest] = bewertet;
+    for (const r of rest) if (r.eigen === 0) { await store.deleteNote(r.n.id); doppelt++; }
+    const pfad = notabilityPfad(behalte.n.quelle);
+    const ziel = pfad.length > 1 ? await store.ordnerPfad(null, pfad.slice(0, -1)) : store.todoId();
+    const quelle = 'notability:' + pfad.join('/');
+    for (const r of [behalte, ...rest.filter(r => r.eigen > 0)]) {
+      const n = store.note(r.n.id);
+      if (n.folderId !== ziel || n.quelle !== quelle) {
+        if (n.folderId !== ziel) verschoben++;
+        await store.updateNote(n.id, { folderId: ziel, quelle }, { touch: false });
+      }
+    }
+  }
+  // Leere Ordner aufräumen; von jedem Startordner (Auftrag, Offen …) bleibt der erste oben stehen
+  const bleiben = new Set();
+  for (const name of store.START_NAMEN()) {
+    const f = store.children(null).find(x => x.name.toLocaleLowerCase('de') === name.toLocaleLowerCase('de'));
+    if (f) bleiben.add(f.id);
+  }
+  let weg = 0, nochmal = true;
+  while (nochmal) {
+    nochmal = false;
+    for (const f of [...store.state.folders.values()]) {
+      if (f.system || bleiben.has(f.id)) continue;
+      if (!store.children(f.id).length && !store.notesIn(f.id).length) { await store.entferneLeer(f.id); weg++; nochmal = true; }
+    }
+  }
+  return { notizen: notes.length - doppelt, verschoben, doppelt, weg };
+}

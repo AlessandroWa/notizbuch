@@ -2,7 +2,7 @@
 import * as store from './store.js';
 import * as ui from './ui.js';
 import { exportiere, lies, stelleWiederHer } from './backup.js';
-import { importiere } from './import.js';
+import { importiere, ordnungWiederherstellen } from './import.js';
 import { VORLAGEN } from './vorlagen.js';
 import { notizAlsPdf } from './pdfexport.js';
 import { makeThumb } from './vorschau.js';
@@ -186,7 +186,8 @@ async function zeichneEinstellungen() {
     </details>
     <h2>Aus Notability übernehmen</h2>
     <p>In OneDrive den Ordner „Notability“ herunterladen (ergibt eine ZIP-Datei) und hier auswählen. Die Ordner werden übernommen, jede PDF wird eine Notiz, auf der du weiterschreiben kannst. Schon übernommene Notizen werden beim nächsten Mal übersprungen, du kannst also jederzeit nachholen.</p>
-    <div class="reihe"><button class="knopf primaer" data-a="notability">ZIP oder PDFs auswählen …</button></div>
+    <div class="reihe"><button class="knopf primaer" data-a="notability">ZIP oder PDFs auswählen …</button>
+    <button class="knopf" data-a="ordnung">Ordnung wie in Notability wiederherstellen</button></div>
     <h2>Sicherung</h2>
     <p>Alle Ordner, Notizen und PDFs in eine ZIP-Datei sichern, z. B. in „Dateien“ auf dem iPad oder auf dem Mac. Mit „Sicherung laden“ lässt sie sich auf jedem Gerät wieder einspielen.</p>
     <div class="reihe"><button class="knopf primaer" data-a="sicherung">Sicherung exportieren</button>
@@ -263,6 +264,16 @@ main.addEventListener('click', async e => {
   if (a === 'ordner-menue') return ordnerMenue(el, aktuellerOrdner);
   if (a === 'notiz-menue') return notizMenue(el, nid);
   if (a === 'sicherung') return exportieren(el);
+  if (a === 'ordnung') {
+    if (!await ui.bestaetige('Alle aus Notability übernommenen Notizen wieder in ihre Notability-Ordner legen? Auch Notizen, die du inzwischen verschoben hast, wandern zurück. Doppelte Notizen ohne eigene Handschrift werden entfernt, leere Ordner aufgeräumt. Deine eigenen Notizen bleiben, wo sie sind.', 'Wiederherstellen')) return;
+    const f = ui.fortschritt('Ordnung wird wiederhergestellt');
+    let r;
+    try { r = await ordnungWiederherstellen((t, x) => f.setze(t, x)); }
+    catch (err) { f.zu(); return ui.meldung('Fehler: ' + (err.message || err)); }
+    f.zu();
+    await ui.meldung(`Fertig: ${r.notizen} Notizen geprüft, ${r.verschoben} zurückgelegt${r.doppelt ? `, ${r.doppelt} doppelte entfernt` : ''}${r.weg ? `, ${r.weg} leere Ordner aufgeräumt` : ''}.`);
+    return geh('#/ordner/' + store.todoId());
+  }
   if (a === 'sync-an') return sync.anmelden();
   if (a === 'sync-ab') { if (await ui.bestaetige('Von OneDrive abmelden? Die Daten auf diesem Gerät bleiben erhalten, werden aber nicht mehr abgeglichen.', 'Abmelden')) { await sync.abmelden(); render(); } return; }
   if (a === 'sync-jetzt') { await sync.abgleichen(); return render(); }

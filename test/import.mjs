@@ -127,6 +127,36 @@ await page.click('.dlg .primaer');
 const pfade3 = await db(`x.folders.map(f => { const p=[]; for (let g=f; g; g=x.folders.find(h=>h.id===g.parentId)) p.unshift(g.name); return p.join('/'); })`);
 pruefe(pfade3.includes('Auftrag/BV Neu') && !pfade3.some(p => p.startsWith('Notability')) && pfade3.filter(p => p === 'Auftrag').length === 1, 'Einsortieren: „Notability/Auftrag/BV Neu“ → „Auftrag/BV Neu“');
 
+// 2d. Durcheinander (Notizen verschoben, Hüllordner, doppelte Notiz) → Ordnung wiederherstellen
+await page.evaluate(async () => {
+  const d = await new Promise(r => { const q = indexedDB.open('notizbuch'); q.onsuccess = () => r(q.result); });
+  const alle = s => new Promise(r => { const q = d.transaction(s).objectStore(s).getAll(); q.onsuccess = () => r(q.result); });
+  const ordner = await alle('folders'), notes = await alle('notes');
+  const todo = ordner.find(f => f.system === 'todo'), offen = ordner.find(f => f.name === 'Offen' && !f.parentId);
+  const jetzt = Date.now();
+  const huelle = { id: 'chaos', name: 'Notability 2', color: '#8a8687', parentId: null, sort: 98, createdAt: jetzt, updatedAt: jetzt };
+  const t = d.transaction(['notes', 'folders', 'pages'], 'readwrite');
+  t.objectStore('folders').put(huelle);
+  notes.filter(n => n.quelle).forEach((n, i) => { n.folderId = [todo.id, offen.id, 'chaos'][i % 3]; t.objectStore('notes').put(n); });
+  const eg = notes.find(n => n.title === 'EG');
+  const kopie = { ...eg, id: 'doppelt', pageIds: ['doppelt-s'], quelle: 'notability:OneDrive_1/Notability/' + eg.quelle.slice(11), folderId: todo.id };
+  t.objectStore('notes').put(kopie);
+  t.objectStore('pages').put({ id: 'doppelt-s', noteId: 'doppelt', w: 1000, h: 1414, paper: 'blanko', strokes: [], objects: [] });
+  await new Promise(r => { t.oncomplete = r; });
+  d.close();
+});
+await page.reload();
+await page.click('[data-a=einstellungen]');
+await page.click('[data-a=ordnung]');
+await page.click('.dlg .primaer');
+await page.waitForSelector('.dlg:not(.fortschritt) .primaer');
+console.log('     Meldung: ' + await page.locator('.dlg .dlg-text').innerText());
+await page.click('.dlg .primaer');
+const ort = await db(`x.notes.filter(n => n.quelle).map(n => { const p=[]; for (let g=x.folders.find(f=>f.id===n.folderId); g; g=x.folders.find(h=>h.id===g.parentId)) p.unshift(g.name); return p.join('/') + '/' + n.title; }).sort()`);
+console.log('     ' + ort.join(' | '));
+pruefe(ort.includes('Auftrag/BV Teststraße 1/Pläne/EG') && ort.includes('Offen/Kunde Ä Muster/Angebot') && ort.includes('Auftrag/BV Hülle/Plan') && ort.length === 4, 'Ordnung wiederhergestellt, Doppelte entfernt');
+pruefe(await db(`!x.folders.some(f => f.name === 'Notability 2') && x.folders.filter(f => f.name === 'Auftrag').length === 1`), 'Hüllordner aufgeräumt');
+
 // 3. PDF öffnen: 3 Seiten, PDF sichtbar, auf Seite 2 schreiben
 await page.goto(server.url + '#/suche/EG');
 await page.click('.karte [data-a=oeffnen]');
