@@ -7,6 +7,7 @@ import { VORLAGEN } from './vorlagen.js';
 import { notizAlsPdf } from './pdfexport.js';
 import { makeThumb } from './vorschau.js';
 import * as sync from './sync.js';
+import { ziehenEinrichten } from './ziehen.js';
 import { openEditor } from './editor.js';
 import { PAPIERE } from './ink.js';
 import { esc, datum, VERSION } from './util.js';
@@ -48,7 +49,7 @@ function zeichneSeite() {
     for (const f of store.children(pid)) {
       const kinder = store.children(f.id).length > 0;
       const auf = offen.has(f.id);
-      zeilen.push(`<div class="baum-zeile${f.id === aktiv ? ' aktiv' : ''}" data-ordner="${f.id}" style="padding-left:${14 + tiefe * 18}px" role="treeitem" ${kinder ? `aria-expanded="${auf}"` : ''}>
+      zeilen.push(`<div class="baum-zeile${f.id === aktiv ? ' aktiv' : ''}" data-ordner="${f.id}" data-zieh="ordner:${f.id}" style="padding-left:${14 + tiefe * 18}px" role="treeitem" ${kinder ? `aria-expanded="${auf}"` : ''}>
         <span class="dot" style="background:${f.color}"></span><span class="nm">${esc(f.name)}</span>
         ${kinder ? `<button class="chev${auf ? ' auf' : ''}" data-a="klapp" data-id="${f.id}" aria-label="${auf ? 'Zuklappen' : 'Aufklappen'}">${SVG.chev}</button>` : ''}
       </div>`);
@@ -63,7 +64,7 @@ function zeichneSeite() {
       <button class="rund" data-a="einstellungen" aria-label="Einstellungen" title="Einstellungen">${SVG.gear}</button>
     </div>
     <label class="suche">${SVG.lupe}<input type="search" id="suche" placeholder="Suchen" value="${esc(q)}" autocomplete="off" enterkeyhint="search"></label>
-    <div class="side-kopf"><span>Ordner</span><button class="rund" data-a="neuer-ordner" aria-label="Neuer Ordner" title="Neuer Ordner">${SVG.plus}</button></div>
+    <div class="side-kopf" data-ziel="oben"><span>Ordner</span><button class="rund" data-a="neuer-ordner" aria-label="Neuer Ordner" title="Neuer Ordner">${SVG.plus}</button></div>
     <nav class="baum" role="tree" aria-label="Ordner">${zeilen.join('')}</nav>
     <button class="sync-zeile" id="sync-zeile" data-a="einstellungen" hidden></button>`;
   zeigeSync();
@@ -110,6 +111,16 @@ side.addEventListener('input', e => {
   history.replaceState(null, '', h);
   zeichneHaupt();
 });
+// Kurzer Hinweis unten in der Mitte
+function hinweis(text) {
+  let t = document.getElementById('hinweis');
+  if (!t) { t = document.createElement('div'); t.id = 'hinweis'; t.setAttribute('role', 'status'); document.body.append(t); }
+  t.textContent = text;
+  t.classList.add('sichtbar');
+  clearTimeout(t.uhr);
+  t.uhr = setTimeout(() => t.classList.remove('sichtbar'), 2500);
+}
+
 const schliesseSeite = () => document.body.classList.remove('side-offen');
 
 // ---------- Hauptbereich ----------
@@ -119,9 +130,9 @@ const zaehler = id => {
   return o ? `${t} · ${o} Ordner` : t;
 };
 
-const kachel = f => `<button class="kachel" data-ordner="${f.id}"><span class="dot" style="background:${f.color}"></span><b>${esc(f.name)}</b><span>${zaehler(f.id)}</span></button>`;
+const kachel = f => `<button class="kachel" data-ordner="${f.id}" data-zieh="ordner:${f.id}"><span class="dot" style="background:${f.color}"></span><b>${esc(f.name)}</b><span>${zaehler(f.id)}</span></button>`;
 
-const karte = (n, unterzeile = datum(n.updatedAt)) => `<article class="karte" data-notiz="${n.id}">
+const karte = (n, unterzeile = datum(n.updatedAt)) => `<article class="karte" data-notiz="${n.id}" data-zieh="notiz:${n.id}">
   <button class="karte-bild" data-a="oeffnen" aria-label="${esc(n.title)} öffnen"><img alt="" data-thumb="${n.id}" hidden></button>
   <div class="karte-fuss">
     <div class="karte-text"><b>${esc(n.title)}</b><span>${esc(unterzeile)}</span></div>
@@ -498,6 +509,11 @@ function render() {
   window.notizbuchSync = sync; // für Tests und Fehlersuche
   sync.beiStatus(zeigeSync);
   window.addEventListener('hashchange', render);
+  ziehenEinrichten({
+    fertig: () => render(),
+    meldung: hinweis,
+    klappeAuf: id => { offen.add(id); merkeOffen(); zeichneSeite(); },
+  });
   render();
   sync.start({
     gesperrt: () => offeneNotiz,

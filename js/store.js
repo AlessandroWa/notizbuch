@@ -105,6 +105,23 @@ export async function moveFolder(id, ziel) {
   return updateFolder(id, { parentId: ziel ?? null, sort });
 }
 
+// Ordner an eine Stelle legen: in "parentId" an Position "index" (Reihenfolge wird neu durchnummeriert).
+export async function ordneOrdner(id, parentId, index = Infinity) {
+  parentId = parentId ?? null;
+  if (!canMoveFolder(id, parentId)) throw new Error('Ordner kann dorthin nicht verschoben werden.');
+  const geschw = children(parentId).filter(f => f.id !== id);
+  geschw.splice(Math.max(0, Math.min(index, geschw.length)), 0, folder(id));
+  const jetzt = Date.now(), neu = [];
+  geschw.forEach((f, i) => {
+    const wandert = f.id === id && (f.parentId ?? null) !== parentId;
+    if (f.sort !== i || wandert) neu.push({ ...f, sort: i, ...(f.id === id ? { parentId } : {}), updatedAt: jetzt });
+  });
+  if (!neu.length) return;
+  await db.tx(['folders'], o => { for (const f of neu) o.folders.put(f); });
+  for (const f of neu) state.folders.set(f.id, f);
+  gemeldet();
+}
+
 export function folderInhalt(id) {
   const ids = descendants(id);
   const notes = [...state.notes.values()].filter(n => ids.includes(n.folderId));

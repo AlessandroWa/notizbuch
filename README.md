@@ -103,7 +103,7 @@ Reines HTML/CSS/JavaScript (ES-Module), kein Framework, kein Build. Hosting: Git
 
 ## Neue Version veröffentlichen
 1. `VERSION` in `js/util.js` **und** `sw.js` erhöhen (sonst bekommen installierte Geräte die Änderung nicht).
-2. Tests: `node test/smoke.mjs`, `node test/import.mjs`, `node test/skizze.mjs`, `node test/funktionen.mjs`, `node test/onedrive.mjs` (brauchen Playwright; OneDrive wird im Test nachgestellt).
+2. Tests: `node test/smoke.mjs`, `node test/import.mjs`, `node test/skizze.mjs`, `node test/funktionen.mjs`, `node test/onedrive.mjs`, `node test/ziehen.mjs` (brauchen Playwright; OneDrive wird im Test nachgestellt).
 3. Auf GitHub pushen; GitHub Pages veröffentlicht automatisch.
 
 ## Lokal starten

@@ -188,3 +188,19 @@ body.schreiben .main { padding: 0; overflow: hidden; }
 }
 @media (min-width: 761px) { .ed-zeile { flex: 0 1 auto; } }
 @media (prefers-reduced-motion: reduce) { .side, .chev svg { transition: none; } }
+
+/* ---------- Ziehen und Ablegen ---------- */
+.zieh-geist { position: fixed; left: 0; top: 0; z-index: 100; pointer-events: none; display: flex; align-items: center; gap: 10px; max-width: 280px;
+  padding: 10px 16px; border-radius: 14px; background: var(--menue); border: 1px solid var(--rand2); box-shadow: 0 12px 30px rgba(0,0,0,.45); font-weight: 600; }
+.zieh-geist span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.zieh-blatt { width: 16px; height: 20px; border-radius: 3px; background: #fff; flex: none; }
+body.zieht, body.zieht * { cursor: grabbing !important; }
+.zieh-quelle { opacity: .4; }
+.ziel-in { background: rgba(255,255,255,.16) !important; box-shadow: inset 0 0 0 2px var(--text); }
+.ziel-vor { box-shadow: inset 0 3px 0 var(--text); }
+.ziel-nach { box-shadow: inset 0 -3px 0 var(--text); }
+.ziel-oben { color: var(--text); box-shadow: inset 0 -3px 0 var(--text); }
+#hinweis { position: fixed; left: 50%; bottom: calc(24px + var(--sb)); transform: translate(-50%, 20px); opacity: 0; transition: .2s; z-index: 90;
+  background: var(--menue); border: 1px solid var(--rand2); padding: 10px 18px; border-radius: 12px; pointer-events: none; max-width: 90vw; }
+#hinweis.sichtbar { opacity: 1; transform: translate(-50%, 0); }
+@media (prefers-reduced-motion: reduce) { #hinweis { transition: none; } }
