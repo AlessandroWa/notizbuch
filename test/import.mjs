@@ -49,6 +49,11 @@ fs.writeFileSync(zipDatei, zip([
   ['Notability/Auftrag/BV Teststraße 1/Notiz.note', 'kein pdf'],
   ['__MACOSX/Notability/._x.pdf', 'müll'],
 ]));
+const huellZip = path.join(TMP, 'huelle.zip');
+fs.writeFileSync(huellZip, zip([
+  ['OneDrive_1_21-11-2026/Notability/Auftrag/BV Hülle/Plan.pdf', plan],
+  ['OneDrive_1_21-11-2026/Notability/Offen/Kunde Ä Muster/Angebot.pdf', angebot],
+]));
 const einzel = path.join(TMP, 'Rechnung 4711.pdf');
 fs.writeFileSync(einzel, angebot);
 
@@ -93,6 +98,34 @@ pruefe(pfade.filter(p => p.endsWith('Pläne')).length === 1, 'Mac-Umlaute: „Pl
 // 2. Gleiche ZIP nochmal: nichts doppelt
 t = await uebernehmen(zipDatei);
 pruefe(/0 Notizen übernommen/.test(t) && /3 schon vorhanden/.test(t), 'Zweiter Import überspringt Vorhandenes');
+
+// 2b. ZIP mit Hülle ("OneDrive_…/Notability/…"): landet in den vorhandenen Ordnern, Doppeltes wird erkannt
+t = await uebernehmen(huellZip);
+const pfade2 = await db(`x.folders.map(f => { const p=[]; for (let g=f; g; g=x.folders.find(h=>h.id===g.parentId)) p.unshift(g.name); return p.join('/'); })`);
+pruefe(/1 Notiz übernommen/.test(t) && /1 schon vorhanden/.test(t), 'ZIP mit Hülle: 1 neu, 1 schon vorhanden');
+pruefe(pfade2.includes('Auftrag/BV Hülle') && !pfade2.some(p => /OneDrive|Notability/.test(p)), 'ZIP mit Hülle: kein zusätzlicher Ordner');
+
+// 2c. Einsortieren: Hüllordner von Hand angelegt, Inhalt wird in die vorhandenen Ordner verteilt
+await page.evaluate(async () => {
+  const d = await new Promise(r => { const q = indexedDB.open('notizbuch'); q.onsuccess = () => r(q.result); });
+  const alle = await new Promise(r => { const q = d.transaction('folders').objectStore('folders').getAll(); q.onsuccess = () => r(q.result); });
+  const auftrag = alle.find(f => f.name === 'Auftrag' && !f.parentId);
+  const jetzt = Date.now();
+  const huelle = { id: 'huelle', name: 'Notability', color: '#8a8687', parentId: null, sort: 99, createdAt: jetzt, updatedAt: jetzt };
+  const a2 = { id: 'h-auftrag', name: 'Auftrag', color: '#8a8687', parentId: 'huelle', sort: 0, createdAt: jetzt, updatedAt: jetzt };
+  const bv = { id: 'h-bv', name: 'BV Neu', color: '#8a8687', parentId: 'h-auftrag', sort: 0, createdAt: jetzt, updatedAt: jetzt };
+  await new Promise(r => { const t = d.transaction('folders', 'readwrite'); for (const f of [huelle, a2, bv]) t.objectStore('folders').put(f); t.oncomplete = r; });
+  d.close();
+});
+await page.reload();
+await page.goto(server.url + '#/ordner/huelle');
+await page.waitForSelector('h1:has-text("Notability")');
+await page.click('[data-a=ordner-menue]');
+await page.click('.menue [data-k=einsortieren]');
+await page.click('.dlg .primaer');
+await page.click('.dlg .primaer');
+const pfade3 = await db(`x.folders.map(f => { const p=[]; for (let g=f; g; g=x.folders.find(h=>h.id===g.parentId)) p.unshift(g.name); return p.join('/'); })`);
+pruefe(pfade3.includes('Auftrag/BV Neu') && !pfade3.some(p => p.startsWith('Notability')) && pfade3.filter(p => p === 'Auftrag').length === 1, 'Einsortieren: „Notability/Auftrag/BV Neu“ → „Auftrag/BV Neu“');
 
 // 3. PDF öffnen: 3 Seiten, PDF sichtbar, auf Seite 2 schreiben
 await page.goto(server.url + '#/suche/EG');
@@ -154,7 +187,7 @@ await page.setInputFiles('#import-datei', sicherung);
 await page.click('.dlg .gefahr');
 await page.waitForSelector('.dlg:not(.fortschritt) .primaer', { timeout: 20000 });
 await page.click('.dlg .primaer');
-pruefe(await db(`x.files.length === 4 && x.pages.length === 7 && x.pages.some(p => p.strokes.length === 1)`), 'Sicherung geladen: PDFs, Seiten und Striche zurück');
+pruefe(await db(`x.files.length === 5 && x.pages.length === 10 && x.pages.some(p => p.strokes.length === 1)`), 'Sicherung geladen: PDFs, Seiten und Striche zurück');
 await page.goto(server.url + '#/suche/EG');
 await page.click('.karte [data-a=oeffnen]');
 await page.waitForTimeout(1500);

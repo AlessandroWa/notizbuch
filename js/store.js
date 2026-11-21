@@ -135,6 +135,37 @@ export async function deleteFolder(id) {
   gemeldet();
 }
 
+// Inhalt eines Ordners eine Ebene höher einsortieren: gleichnamige Ordner werden zusammengelegt,
+// der leere Ordner verschwindet. Nichts wird gelöscht außer leeren Ordnern.
+export async function einsortieren(id) {
+  const quelle = folder(id);
+  if (!quelle || quelle.system) throw new Error('Dieser Ordner kann nicht einsortiert werden.');
+  const ziel = quelle.parentId ?? null;
+  let ordner = 0, notizen = 0;
+  async function lege(qid, zielParent) {
+    for (const k of children(qid)) {
+      const gleich = children(zielParent).find(f => f.id !== k.id && f.name.toLocaleLowerCase('de') === k.name.toLocaleLowerCase('de'));
+      if (gleich) { await lege(k.id, gleich.id); await legeNotizen(k.id, gleich.id); await entferneLeer(k.id); ordner++; }
+      else { await moveFolder(k.id, zielParent); }
+    }
+  }
+  async function legeNotizen(von, nach) {
+    for (const n of notesIn(von)) { await moveNote(n.id, nach); notizen++; }
+  }
+  await lege(id, ziel);
+  await legeNotizen(id, ziel ?? todoId());
+  await entferneLeer(id);
+  return { ordner, notizen };
+}
+
+async function entferneLeer(id) {
+  if (children(id).length || notesIn(id).length) return;
+  state.geloescht.ordner[id] = Date.now();
+  await db.tx(['folders', 'meta'], o => { o.folders.delete(id); o.meta.put(state.geloescht); });
+  state.folders.delete(id);
+  gemeldet();
+}
+
 // ---------- Notizen ----------
 export function newPage(noteId, paper = 'liniert') {
   return { id: uid(), noteId, w: PAGE_W, h: PAGE_H, paper, strokes: [], objects: [] };

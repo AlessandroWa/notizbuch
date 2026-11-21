@@ -400,7 +400,7 @@ async function ordnerMenue(knopf, id) {
   const f = store.folder(id);
   const k = await ui.menue(knopf, [
     { k: 'neu', t: 'Unterordner anlegen' }, { k: 'name', t: 'Umbenennen' }, { k: 'farbe', t: 'Farbe ändern' },
-    ...(f.system ? [] : [{ k: 'move', t: 'Verschieben nach …' }, '-', { k: 'del', t: 'Ordner löschen', gefahr: true }]),
+    ...(f.system ? [] : [{ k: 'move', t: 'Verschieben nach …' }, { k: 'einsortieren', t: 'In vorhandene Ordner einsortieren' }, '-', { k: 'del', t: 'Ordner löschen', gefahr: true }]),
   ]);
   if (k === 'neu') return neuerOrdner(id);
   if (k === 'name') { const n = await ui.frage('Ordner umbenennen', f.name, 'Speichern'); if (n) await store.updateFolder(id, { name: n }); }
@@ -410,6 +410,14 @@ async function ordnerMenue(knopf, id) {
     if (ziel === undefined) return;
     await store.moveFolder(id, ziel);
     if (ziel) { offen.add(ziel); merkeOffen(); }
+  }
+  if (k === 'einsortieren') {
+    const ebene = f.parentId ? `„${store.folder(f.parentId).name}“` : 'die oberste Ebene';
+    if (!await ui.bestaetige(`Den Inhalt von „${f.name}“ in ${ebene} einsortieren? Gleichnamige Ordner werden zusammengelegt (z. B. „Auftrag“ in „Auftrag“), danach verschwindet „${f.name}“. Es wird nichts gelöscht.`, 'Einsortieren')) return;
+    const eltern = f.parentId;
+    const r = await store.einsortieren(id);
+    await ui.meldung(`Fertig: ${r.ordner} Ordner zusammengelegt${r.notizen ? `, ${r.notizen} Notizen umsortiert` : ''}.`);
+    return geh('#/ordner/' + (eltern || store.todoId()), true);
   }
   if (k === 'del') {
     const { ordner, notizen } = store.folderInhalt(id);
