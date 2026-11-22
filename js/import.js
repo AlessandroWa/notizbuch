@@ -24,6 +24,23 @@ function huelle(pfade) {
   return n;
 }
 
+// Zielordner für eine neue Notiz aus Notability-Ordner "pfad":
+// 1. dorthin, wo ihre Geschwister (andere Notizen aus demselben Notability-Ordner) jetzt liegen
+// 2. sonst in einen Ordner mit genau diesem Namen, wenn es ihn nur einmal gibt (z. B. ein verschobenes BV)
+// 3. sonst nach dem Notability-Pfad (Ordner werden bei Bedarf angelegt)
+async function zielFuer(pfad, orte) {
+  if (!pfad.length) return store.todoId();
+  const da = orte.get(pfad.join('/').normalize('NFC'));
+  if (da) {
+    const [id] = [...da.entries()].filter(([fid]) => store.folder(fid)).sort((a, b) => b[1] - a[1])[0] || [];
+    if (id) return id;
+  }
+  const name = pfad.at(-1).toLocaleLowerCase('de');
+  const gleich = [...store.state.folders.values()].filter(f => f.name.toLocaleLowerCase('de') === name);
+  if (gleich.length === 1 && pfad.length > 1) return gleich[0].id;
+  return store.ordnerPfad(null, pfad);
+}
+
 // Interne Notability-Dateien, keine Notizen
 const MUELL = /^NBMetadataCache$/i;
 
@@ -55,6 +72,14 @@ export async function importiere(dateien, zielOrdner, melde) {
   if (!auftraege.length) throw new Error('Keine PDF-Dateien gefunden.');
 
   const erg = { notizen: 0, ordnerVorher: store.state.folders.size, uebersprungen: 0, fehler: [], neu: [], gesamt: auftraege.length, letzte: null };
+  // Wo liegen die Notizen aus einem Notability-Ordner jetzt? (nach eigenem Umsortieren)
+  const orte = new Map(); // Notability-Ordnerpfad -> Map(folderId -> Anzahl)
+  const merkeOrt = (quelle, folderId) => {
+    const k = notabilityPfad(quelle).slice(0, -1).join('/').normalize('NFC');
+    if (!orte.has(k)) orte.set(k, new Map());
+    orte.get(k).set(folderId, (orte.get(k).get(folderId) || 0) + 1);
+  };
+  for (const n of store.state.notes.values()) if (n.quelle?.startsWith('notability:')) merkeOrt(n.quelle, n.folderId);
   const vorhanden = new Set([...store.state.notes.values()].filter(n => n.quelle?.startsWith('notability:')).map(n => schluessel(n.quelle)));
   // Während des Imports nicht in den Ruhezustand gehen (sonst bricht er ab)
   let wach = null;
@@ -65,7 +90,7 @@ export async function importiere(dateien, zielOrdner, melde) {
     melde(`PDF ${i + 1} von ${auftraege.length}`, i / auftraege.length, (a.pfad ? a.pfad.join(' › ') + ' › ' : '') + a.titel);
     if (a.quelle && vorhanden.has(schluessel(a.quelle))) { erg.uebersprungen++; continue; }
     try {
-      const folderId = a.pfad ? (a.pfad.length ? await store.ordnerPfad(null, a.pfad) : store.todoId()) : zielOrdner;
+      const folderId = a.pfad ? await zielFuer(a.pfad, orte) : zielOrdner;
       const blob = await a.blob();
       const { seiten, doc } = await seitenInfo(blob);
       try {
@@ -75,12 +100,18 @@ export async function importiere(dateien, zielOrdner, melde) {
         erg.letzte = note.id;
       } finally { doc.destroy(); }
       erg.notizen++;
-      if (a.quelle) vorhanden.add(schluessel(a.quelle));
+      if (a.quelle) { vorhanden.add(schluessel(a.quelle)); merkeOrt(a.quelle, folderId); }
       erg.neu.push((a.pfad?.length ? a.pfad.join(' › ') + ' › ' : '') + a.titel);
     } catch (err) {
       console.error(err);
       erg.fehler.push(`${(a.pfad?.length ? a.pfad.join(' › ') + ' › ' : '') + a.titel}: ${err.message || err}`);
     }
+  }
+  // Früher übernommene interne Notability-Dateien (NBMetadataCache) ohne eigene Notizen entfernen
+  for (const n of [...store.state.notes.values()]) {
+    if (!n.quelle?.startsWith('notability:') || !MUELL.test(ohneEndung(notabilityPfad(n.quelle).at(-1)))) continue;
+    const pages = await store.loadPages(n);
+    if (!pages.some(p => p.strokes.length || (p.objects || []).length)) await store.deleteNote(n.id);
   }
   } finally { wach?.release().catch(() => {}); }
   erg.ordner = store.state.folders.size - erg.ordnerVorher;

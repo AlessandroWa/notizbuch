@@ -150,7 +150,7 @@ await page.evaluate(async () => {
 await page.reload();
 await page.click('[data-a=einstellungen]');
 await page.click('[data-a=ordnung]');
-await page.click('.dlg .primaer');
+await page.click('.dlg .gefahr');
 await page.waitForSelector('.dlg:not(.fortschritt) .primaer');
 console.log('     Meldung: ' + await page.locator('.dlg .dlg-text').innerText());
 await page.click('.dlg .primaer');
@@ -158,6 +158,36 @@ const ort = await db(`x.notes.filter(n => n.quelle).map(n => { const p=[]; for (
 console.log('     ' + ort.join(' | '));
 pruefe(ort.includes('Auftrag/BV Teststraße 1/Pläne/EG') && ort.includes('Offen/Kunde Ä Muster/Angebot') && ort.includes('Auftrag/BV Hülle/Plan') && ort.includes('Auftrag/BV Teststraße 1/EG') && ort.length === 5, 'Ordnung wiederhergestellt, Doppelte entfernt');
 pruefe(await db(`!x.folders.some(f => f.name === 'Notability 2') && x.folders.filter(f => f.name === 'Auftrag').length === 1`), 'Hüllordner aufgeräumt');
+
+// 2e. Eigene Sortierung bleibt: BV verschoben, Notiz von Hand umsortiert, dann ZIP mit einer neuen Datei
+await page.goto(server.url);
+await page.waitForSelector('.baum-zeile');
+await page.evaluate(async () => {
+  const d = await new Promise(r => { const q = indexedDB.open('notizbuch'); q.onsuccess = () => r(q.result); });
+  const alle = s => new Promise(r => { const q = d.transaction(s).objectStore(s).getAll(); q.onsuccess = () => r(q.result); });
+  const ordner = await alle('folders'), notes = await alle('notes');
+  const bv = ordner.find(f => f.name === 'BV Teststraße 1'), abg = ordner.find(f => f.name === 'Abgeschlossene BV' && !f.parentId);
+  const todo = ordner.find(f => f.system === 'todo');
+  const t = d.transaction(['folders', 'notes'], 'readwrite');
+  t.objectStore('folders').put({ ...bv, parentId: abg.id, updatedAt: Date.now() });
+  const ang = notes.find(n => n.title === 'Angebot');
+  t.objectStore('notes').put({ ...ang, folderId: todo.id });
+  await new Promise(r => { t.oncomplete = r; });
+  d.close();
+});
+await page.reload();
+const nachZip = path.join(TMP, 'nachtrag.zip');
+fs.writeFileSync(nachZip, zip([
+  ['Notability/Auftrag/BV Teststraße 1/Pläne/EG.pdf', plan],
+  ['Notability/Auftrag/BV Teststraße 1/Pläne/DG.pdf', plan],
+  ['Notability/Offen/Kunde Ä Muster/Angebot.pdf', angebot],
+  ['Notability/Offen/Kunde Ä Muster/Aufmaß.pdf', angebot],
+]));
+t = await uebernehmen(nachZip);
+const ort2 = await db(`x.notes.filter(n => n.quelle).map(n => { const p=[]; for (let g=x.folders.find(f=>f.id===n.folderId); g; g=x.folders.find(h=>h.id===g.parentId)) p.unshift(g.name); return p.join('/') + '/' + n.title; })`);
+pruefe(/Neu übernommen: 2/.test(t), 'Nachtrag: nur die 2 fehlenden kommen dazu');
+pruefe(ort2.includes('Abgeschlossene BV/BV Teststraße 1/Pläne/DG') && !ort2.some(p => p.startsWith('Auftrag/BV Teststraße 1')), 'Neue Notiz folgt dem verschobenen BV');
+pruefe(ort2.includes('To Do/Angebot') && ort2.includes('To Do/Aufmaß'), 'Neue Notiz folgt der von Hand einsortierten Geschwister-Notiz, Vorhandenes bleibt');
 
 // 3. PDF öffnen: 3 Seiten, PDF sichtbar, auf Seite 2 schreiben
 await page.goto(server.url + '#/suche/EG');
@@ -219,7 +249,7 @@ await page.setInputFiles('#import-datei', sicherung);
 await page.click('.dlg .gefahr');
 await page.waitForSelector('.dlg:not(.fortschritt) .primaer', { timeout: 20000 });
 await page.click('.dlg .primaer');
-pruefe(await db(`x.files.length === 6 && x.pages.length === 13 && x.pages.some(p => p.strokes.length === 1)`), 'Sicherung geladen: PDFs, Seiten und Striche zurück');
+pruefe(await db(`x.files.length === 8 && x.pages.length === 17 && x.pages.some(p => p.strokes.length === 1)`), 'Sicherung geladen: PDFs, Seiten und Striche zurück');
 await page.goto(server.url + '#/suche/EG');
 await page.click('.karte [data-a=oeffnen]');
 await page.waitForTimeout(1500);

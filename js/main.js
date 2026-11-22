@@ -218,9 +218,9 @@ async function zeichneEinstellungen() {
       <button class="knopf" data-a="sync-konfig">Speichern</button>
     </details>
     <h2>Aus Notability übernehmen</h2>
-    <p>In OneDrive den Ordner „Notability“ herunterladen (ergibt eine ZIP-Datei) und hier auswählen. Die Ordner werden übernommen, jede PDF wird eine Notiz, auf der du weiterschreiben kannst. Schon übernommene Notizen werden beim nächsten Mal übersprungen, du kannst also jederzeit nachholen.</p>
+    <p>In OneDrive den Ordner „Notability“ herunterladen (ergibt eine ZIP-Datei) und hier auswählen. Die Ordner werden übernommen, jede PDF wird eine Notiz, auf der du weiterschreiben kannst. Schon übernommene Notizen werden übersprungen, du kannst also jederzeit nachholen. Deine eigene Sortierung bleibt erhalten: Neue Notizen kommen dorthin, wo die übrigen Notizen aus demselben Notability-Ordner bei dir jetzt liegen.</p>
     <div class="reihe"><button class="knopf primaer" data-a="notability">ZIP oder PDFs auswählen …</button>
-    <button class="knopf" data-a="ordnung">Ordnung wie in Notability wiederherstellen</button></div>
+    <button class="knopf" data-a="ordnung">Notfall: alles zurück wie in Notability</button></div>
     <h2>Sicherung</h2>
     <p>Alle Ordner, Notizen und PDFs in eine ZIP-Datei sichern, z. B. in „Dateien“ auf dem iPad oder auf dem Mac. Mit „Sicherung laden“ lässt sie sich auf jedem Gerät wieder einspielen.</p>
     <div class="reihe"><button class="knopf primaer" data-a="sicherung">Sicherung exportieren</button>
@@ -299,7 +299,7 @@ main.addEventListener('click', async e => {
   if (a === 'notiz-menue') return notizMenue(el, nid);
   if (a === 'sicherung') return exportieren(el);
   if (a === 'ordnung') {
-    if (!await ui.bestaetige('Alle aus Notability übernommenen Notizen wieder in ihre Notability-Ordner legen? Auch Notizen, die du inzwischen verschoben hast, wandern zurück. Doppelte Notizen ohne eigene Handschrift werden entfernt, leere Ordner aufgeräumt. Deine eigenen Notizen bleiben, wo sie sind.', 'Wiederherstellen')) return;
+    if (!await ui.bestaetige('ACHTUNG: Das macht dein eigenes Einsortieren rückgängig! Alle aus Notability übernommenen Notizen wandern zurück in ihre ursprünglichen Notability-Ordner, auch die, die du selbst verschoben hast. Doppelte ohne eigene Handschrift werden entfernt, leere Ordner aufgeräumt. Nur benutzen, wenn alles durcheinander ist.', 'Trotzdem zurücksetzen', true)) return;
     const f = ui.fortschritt('Ordnung wird wiederhergestellt');
     let r;
     try { r = await ordnungWiederherstellen((t, x) => f.setze(t, x)); }
