@@ -354,11 +354,12 @@ async function uebernehme(dateien, zielOrdner) {
   try { erg = await importiere(dateien, zielOrdner, (t, x, k) => f.setze(t, x, k)); }
   catch (err) { f.zu(); return ui.meldung(err.message || String(err)); }
   f.zu();
-  const teile = [`${erg.notizen} Notiz${erg.notizen === 1 ? '' : 'en'} übernommen`];
-  if (erg.ordner) teile.push(`${erg.ordner} Ordner angelegt`);
-  if (erg.uebersprungen) teile.push(`${erg.uebersprungen} schon vorhanden (übersprungen)`);
-  let text = teile.join(', ') + '.';
-  if (erg.fehler.length) text += `\n\n${erg.fehler.length} Datei(en) ließen sich nicht lesen:\n` + erg.fehler.slice(0, 8).join('\n') + (erg.fehler.length > 8 ? '\n…' : '');
+  let text = erg.gesamt > 1 ? `In der Auswahl: ${erg.gesamt} PDFs\n` : '';
+  text += `Neu übernommen: ${erg.notizen}`;
+  if (erg.ordner) text += ` (${erg.ordner} Ordner angelegt)`;
+  if (erg.uebersprungen) text += `\nSchon vorhanden: ${erg.uebersprungen}`;
+  if (erg.fehler.length) text += `\nNicht lesbar: ${erg.fehler.length}\n\n` + erg.fehler.map(f => '• ' + f).join('\n');
+  if (erg.neu.length && erg.gesamt > 1 && erg.neu.length <= 300) text += '\n\nNeu dazugekommen:\n' + erg.neu.map(f => '• ' + f).join('\n');
   await ui.meldung(text);
   if (dateien.length === 1 && erg.notizen === 1 && erg.letzte && !erg.fehler.length && zielOrdner === aktuellerOrdner) return geh('#/notiz/' + erg.letzte);
   render();

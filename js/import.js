@@ -24,11 +24,11 @@ function huelle(pfade) {
   return n;
 }
 
-// Schon übernommen? (auch wenn ein früherer Import noch eine Hülle im Pfad hatte)
-const schonDa = quelle => {
-  const pfad = quelle.slice('notability:'.length);
-  return [...store.state.notes.values()].some(n => n.quelle && (n.quelle === quelle || n.quelle.endsWith('/' + pfad)));
-};
+// Interne Notability-Dateien, keine Notizen
+const MUELL = /^NBMetadataCache$/i;
+
+// Schlüssel für "schon übernommen": genauer Pfad im Notability-Export, ohne Hüllordner
+const schluessel = quelle => notabilityPfad(quelle).join('/').normalize('NFC');
 
 // dateien: FileList/Array. zielOrdner: Ordner für einzelne PDFs. melde(text, anteil, klein) für die Anzeige.
 export async function importiere(dateien, zielOrdner, melde) {
@@ -42,6 +42,7 @@ export async function importiere(dateien, zielOrdner, melde) {
       const weg = huelle(eintraege.map(x => x.teile));
       for (const { e, teile: alle } of eintraege) {
         const teile = alle.slice(weg);
+        if (MUELL.test(ohneEndung(teile.at(-1)))) continue;
         auftraege.push({
           pfad: teile.slice(0, -1), titel: ohneEndung(teile.at(-1)), datum: e.datum,
           quelle: 'notability:' + teile.join('/'), blob: () => eintragBlob(d, e, 'application/pdf'),
@@ -53,11 +54,16 @@ export async function importiere(dateien, zielOrdner, melde) {
   }
   if (!auftraege.length) throw new Error('Keine PDF-Dateien gefunden.');
 
-  const erg = { notizen: 0, ordnerVorher: store.state.folders.size, uebersprungen: 0, fehler: [], letzte: null };
+  const erg = { notizen: 0, ordnerVorher: store.state.folders.size, uebersprungen: 0, fehler: [], neu: [], gesamt: auftraege.length, letzte: null };
+  const vorhanden = new Set([...store.state.notes.values()].filter(n => n.quelle?.startsWith('notability:')).map(n => schluessel(n.quelle)));
+  // Während des Imports nicht in den Ruhezustand gehen (sonst bricht er ab)
+  let wach = null;
+  try { wach = await navigator.wakeLock?.request('screen'); } catch { /* nicht unterstützt */ }
+  try {
   for (let i = 0; i < auftraege.length; i++) {
     const a = auftraege[i];
     melde(`PDF ${i + 1} von ${auftraege.length}`, i / auftraege.length, (a.pfad ? a.pfad.join(' › ') + ' › ' : '') + a.titel);
-    if (a.quelle && schonDa(a.quelle)) { erg.uebersprungen++; continue; }
+    if (a.quelle && vorhanden.has(schluessel(a.quelle))) { erg.uebersprungen++; continue; }
     try {
       const folderId = a.pfad ? (a.pfad.length ? await store.ordnerPfad(null, a.pfad) : store.todoId()) : zielOrdner;
       const blob = await a.blob();
@@ -69,11 +75,14 @@ export async function importiere(dateien, zielOrdner, melde) {
         erg.letzte = note.id;
       } finally { doc.destroy(); }
       erg.notizen++;
+      if (a.quelle) vorhanden.add(schluessel(a.quelle));
+      erg.neu.push((a.pfad?.length ? a.pfad.join(' › ') + ' › ' : '') + a.titel);
     } catch (err) {
       console.error(err);
-      erg.fehler.push(`${a.titel}: ${err.message || err}`);
+      erg.fehler.push(`${(a.pfad?.length ? a.pfad.join(' › ') + ' › ' : '') + a.titel}: ${err.message || err}`);
     }
   }
+  } finally { wach?.release().catch(() => {}); }
   erg.ordner = store.state.folders.size - erg.ordnerVorher;
   return erg;
 }
@@ -90,10 +99,17 @@ export function notabilityPfad(quelle) {
 }
 
 export async function ordnungWiederherstellen(melde = () => {}) {
-  const notes = [...store.state.notes.values()].filter(n => n.quelle?.startsWith('notability:'));
+  let notes = [...store.state.notes.values()].filter(n => n.quelle?.startsWith('notability:'));
+  let muell = 0;
+  for (const n of notes) {
+    if (!MUELL.test(ohneEndung(notabilityPfad(n.quelle).at(-1)))) continue;
+    const pages = await store.loadPages(n);
+    if (!pages.some(p => p.strokes.length || (p.objects || []).length)) { await store.deleteNote(n.id); muell++; }
+  }
+  notes = notes.filter(n => store.note(n.id));
   const gruppen = new Map();
   for (const n of notes) {
-    const k = notabilityPfad(n.quelle).join('/').toLocaleLowerCase('de');
+    const k = schluessel(n.quelle);
     if (!gruppen.has(k)) gruppen.set(k, []);
     gruppen.get(k).push(n);
   }
@@ -133,5 +149,5 @@ export async function ordnungWiederherstellen(melde = () => {}) {
       if (!store.children(f.id).length && !store.notesIn(f.id).length) { await store.entferneLeer(f.id); weg++; nochmal = true; }
     }
   }
-  return { notizen: notes.length - doppelt, verschoben, doppelt, weg };
+  return { notizen: notes.length - doppelt, verschoben, doppelt: doppelt + muell, weg };
 }

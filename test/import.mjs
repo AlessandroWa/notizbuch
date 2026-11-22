@@ -46,6 +46,8 @@ fs.writeFileSync(zipDatei, zip([
   ['Notability/Offen/Kunde Ä Muster/Angebot.pdf', angebot],
   ['Notability/Auftrag/BV Teststraße 1/Pla\u0308ne/OG.pdf', angebot], // wie vom Mac: ä zerlegt
   ['Notability/.DS_Store', 'mac'],
+  ['Notability/Auftrag/BV Teststraße 1/NBMetadataCache.pdf', plan],
+  ['Notability/Auftrag/BV Teststraße 1/EG.pdf', plan], // gleicher Name wie in Pläne/, anderer Ordner
   ['Notability/Auftrag/BV Teststraße 1/Notiz.note', 'kein pdf'],
   ['__MACOSX/Notability/._x.pdf', 'müll'],
 ]));
@@ -86,23 +88,23 @@ async function uebernehmen(datei) {
 // 1. Notability-ZIP übernehmen
 let t = await uebernehmen(zipDatei);
 console.log('     Meldung: ' + t.replace(/\n/g, ' | '));
-pruefe(/3 Notizen übernommen/.test(t), 'ZIP: 3 Notizen übernommen');
+pruefe(/Neu übernommen: 4/.test(t) && /In der Auswahl: 4 PDFs/.test(t), 'ZIP: 4 Notizen übernommen (NBMetadataCache übersprungen, gleicher Name in anderem Ordner kommt mit)');
 const pfade = await db(`x.folders.map(f => { const p=[]; for (let g=f; g; g=x.folders.find(h=>h.id===g.parentId)) p.unshift(g.name); return p.join('/'); })`);
 pruefe(pfade.includes('Auftrag/BV Teststraße 1/Pläne') && pfade.includes('Offen/Kunde Ä Muster'), 'Ordnerstruktur mit Umlauten übernommen');
 pruefe(pfade.filter(p => p === 'Auftrag').length === 1 && !pfade.some(p => /notability|MACOSX/i.test(p)), 'Keine doppelten oder überflüssigen Ordner');
-pruefe(await db(`x.files.length === 3 && x.thumbs.length === 3`), 'PDF-Dateien und Vorschaubilder gespeichert');
+pruefe(await db(`x.files.length === 4 && x.thumbs.length === 4`), 'PDF-Dateien und Vorschaubilder gespeichert');
 const seiten = await db(`x.pages.filter(p => p.bg).map(p => p.h).sort()`);
-pruefe(seiten.length === 5 && seiten.filter(h => h === 707).length === 2 && seiten.filter(h => h === 1414).length === 3, 'Seiten: 3 × A4 hoch + 2 × quer');
+pruefe(seiten.length === 8 && seiten.filter(h => h === 707).length === 2 && seiten.filter(h => h === 1414).length === 6, 'Seiten: 6 × A4 hoch + 2 × quer');
 pruefe(pfade.filter(p => p.endsWith('Pläne')).length === 1, 'Mac-Umlaute: „Pläne“ nur einmal');
 
 // 2. Gleiche ZIP nochmal: nichts doppelt
 t = await uebernehmen(zipDatei);
-pruefe(/0 Notizen übernommen/.test(t) && /3 schon vorhanden/.test(t), 'Zweiter Import überspringt Vorhandenes');
+pruefe(/Neu übernommen: 0/.test(t) && /Schon vorhanden: 4/.test(t), 'Zweiter Import überspringt Vorhandenes');
 
 // 2b. ZIP mit Hülle ("OneDrive_…/Notability/…"): landet in den vorhandenen Ordnern, Doppeltes wird erkannt
 t = await uebernehmen(huellZip);
 const pfade2 = await db(`x.folders.map(f => { const p=[]; for (let g=f; g; g=x.folders.find(h=>h.id===g.parentId)) p.unshift(g.name); return p.join('/'); })`);
-pruefe(/1 Notiz übernommen/.test(t) && /1 schon vorhanden/.test(t), 'ZIP mit Hülle: 1 neu, 1 schon vorhanden');
+pruefe(/Neu übernommen: 1/.test(t) && /Schon vorhanden: 1/.test(t), 'ZIP mit Hülle: 1 neu, 1 schon vorhanden');
 pruefe(pfade2.includes('Auftrag/BV Hülle') && !pfade2.some(p => /OneDrive|Notability/.test(p)), 'ZIP mit Hülle: kein zusätzlicher Ordner');
 
 // 2c. Einsortieren: Hüllordner von Hand angelegt, Inhalt wird in die vorhandenen Ordner verteilt
@@ -154,7 +156,7 @@ console.log('     Meldung: ' + await page.locator('.dlg .dlg-text').innerText())
 await page.click('.dlg .primaer');
 const ort = await db(`x.notes.filter(n => n.quelle).map(n => { const p=[]; for (let g=x.folders.find(f=>f.id===n.folderId); g; g=x.folders.find(h=>h.id===g.parentId)) p.unshift(g.name); return p.join('/') + '/' + n.title; }).sort()`);
 console.log('     ' + ort.join(' | '));
-pruefe(ort.includes('Auftrag/BV Teststraße 1/Pläne/EG') && ort.includes('Offen/Kunde Ä Muster/Angebot') && ort.includes('Auftrag/BV Hülle/Plan') && ort.length === 4, 'Ordnung wiederhergestellt, Doppelte entfernt');
+pruefe(ort.includes('Auftrag/BV Teststraße 1/Pläne/EG') && ort.includes('Offen/Kunde Ä Muster/Angebot') && ort.includes('Auftrag/BV Hülle/Plan') && ort.includes('Auftrag/BV Teststraße 1/EG') && ort.length === 5, 'Ordnung wiederhergestellt, Doppelte entfernt');
 pruefe(await db(`!x.folders.some(f => f.name === 'Notability 2') && x.folders.filter(f => f.name === 'Auftrag').length === 1`), 'Hüllordner aufgeräumt');
 
 // 3. PDF öffnen: 3 Seiten, PDF sichtbar, auf Seite 2 schreiben
@@ -217,7 +219,7 @@ await page.setInputFiles('#import-datei', sicherung);
 await page.click('.dlg .gefahr');
 await page.waitForSelector('.dlg:not(.fortschritt) .primaer', { timeout: 20000 });
 await page.click('.dlg .primaer');
-pruefe(await db(`x.files.length === 5 && x.pages.length === 10 && x.pages.some(p => p.strokes.length === 1)`), 'Sicherung geladen: PDFs, Seiten und Striche zurück');
+pruefe(await db(`x.files.length === 6 && x.pages.length === 13 && x.pages.some(p => p.strokes.length === 1)`), 'Sicherung geladen: PDFs, Seiten und Striche zurück');
 await page.goto(server.url + '#/suche/EG');
 await page.click('.karte [data-a=oeffnen]');
 await page.waitForTimeout(1500);
