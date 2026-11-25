@@ -70,7 +70,22 @@ export async function importiere(dateien, zielOrdner, melde) {
     }
   }
   if (!auftraege.length) throw new Error('Keine PDF-Dateien gefunden.');
+  return verarbeite(auftraege, zielOrdner, melde);
+}
 
+// Direkt aus dem OneDrive-Ordner "Notability" übernehmen (nur lesen, dort wird nichts verändert).
+export async function importiereAusOneDrive(liste, melde) {
+  const auftraege = [];
+  for (const d of liste) {
+    const teile = d.teile.map(t => t.normalize('NFC'));
+    if (versteckt(teile) || MUELL.test(ohneEndung(teile.at(-1)))) continue;
+    auftraege.push({ pfad: teile.slice(0, -1), titel: ohneEndung(teile.at(-1)), datum: d.datum, quelle: 'notability:' + teile.join('/'), blob: d.blob });
+  }
+  if (!auftraege.length) throw new Error('Im OneDrive-Ordner „Notability“ wurden keine PDFs gefunden.');
+  return verarbeite(auftraege, null, melde);
+}
+
+async function verarbeite(auftraege, zielOrdner, melde) {
   const erg = { notizen: 0, ordnerVorher: store.state.folders.size, uebersprungen: 0, fehler: [], neu: [], gesamt: auftraege.length, letzte: null };
   // Wo liegen die Notizen aus einem Notability-Ordner jetzt? (nach eigenem Umsortieren)
   const orte = new Map(); // Notability-Ordnerpfad -> Map(folderId -> Anzahl)

@@ -2,7 +2,7 @@
 import * as store from './store.js';
 import * as ui from './ui.js';
 import { exportiere, lies, stelleWiederHer } from './backup.js';
-import { importiere, ordnungWiederherstellen } from './import.js';
+import { importiere, importiereAusOneDrive, ordnungWiederherstellen } from './import.js';
 import { VORLAGEN } from './vorlagen.js';
 import { notizAlsPdf } from './pdfexport.js';
 import { makeThumb } from './vorschau.js';
@@ -219,7 +219,8 @@ async function zeichneEinstellungen() {
     </details>
     <h2>Aus Notability übernehmen</h2>
     <p>In OneDrive den Ordner „Notability“ herunterladen (ergibt eine ZIP-Datei) und hier auswählen. Die Ordner werden übernommen, jede PDF wird eine Notiz, auf der du weiterschreiben kannst. Schon übernommene Notizen werden übersprungen, du kannst also jederzeit nachholen. Deine eigene Sortierung bleibt erhalten: Neue Notizen kommen dorthin, wo die übrigen Notizen aus demselben Notability-Ordner bei dir jetzt liegen.</p>
-    <div class="reihe"><button class="knopf primaer" data-a="notability">ZIP oder PDFs auswählen …</button>
+    <div class="reihe">${sync.eingerichtet() && sync.status.angemeldet ? '<button class="knopf primaer" data-a="notability-od">Aus OneDrive übernehmen</button>' : ''}
+    <button class="knopf${sync.status.angemeldet ? '' : ' primaer'}" data-a="notability">ZIP oder PDFs auswählen …</button>
     <button class="knopf" data-a="ordnung">Notfall: alles zurück wie in Notability</button></div>
     <h2>Sicherung</h2>
     <p>Alle Ordner, Notizen und PDFs in eine ZIP-Datei sichern, z. B. in „Dateien“ auf dem iPad oder auf dem Mac. Mit „Sicherung laden“ lässt sie sich auf jedem Gerät wieder einspielen.</p>
@@ -320,6 +321,7 @@ main.addEventListener('click', async e => {
     return render();
   }
   if (a === 'import') return document.getElementById('import-datei').click();
+  if (a === 'notability-od') return uebernehmeAusOneDrive();
   if (a === 'notability') return waehleDateien('.zip,.pdf,application/zip,application/pdf', d => uebernehme(d, store.todoId()));
 });
 main.addEventListener('change', async e => {
@@ -354,13 +356,7 @@ async function uebernehme(dateien, zielOrdner) {
   try { erg = await importiere(dateien, zielOrdner, (t, x, k) => f.setze(t, x, k)); }
   catch (err) { f.zu(); return ui.meldung(err.message || String(err)); }
   f.zu();
-  let text = erg.gesamt > 1 ? `In der Auswahl: ${erg.gesamt} PDFs\n` : '';
-  text += `Neu übernommen: ${erg.notizen}`;
-  if (erg.ordner) text += ` (${erg.ordner} Ordner angelegt)`;
-  if (erg.uebersprungen) text += `\nSchon vorhanden: ${erg.uebersprungen}`;
-  if (erg.fehler.length) text += `\nNicht lesbar: ${erg.fehler.length}\n\n` + erg.fehler.map(f => '• ' + f).join('\n');
-  if (erg.neu.length && erg.gesamt > 1 && erg.neu.length <= 300) text += '\n\nNeu dazugekommen:\n' + erg.neu.map(f => '• ' + f).join('\n');
-  await ui.meldung(text);
+  await zeigeImportBericht(erg);
   if (dateien.length === 1 && erg.notizen === 1 && erg.letzte && !erg.fehler.length && zielOrdner === aktuellerOrdner) return geh('#/notiz/' + erg.letzte);
   render();
 }
@@ -390,6 +386,30 @@ async function alsPdf(id) {
   catch (err) { f.zu(); return ui.meldung('PDF-Export fehlgeschlagen: ' + (err.message || err)); }
   f.zu();
   await gibDatei(datei, `PDF „${n.title}“ ist fertig`);
+}
+
+async function zeigeImportBericht(erg) {
+  let text = erg.gesamt > 1 ? `In der Auswahl: ${erg.gesamt} PDFs\n` : '';
+  text += `Neu übernommen: ${erg.notizen}`;
+  if (erg.ordner) text += ` (${erg.ordner} Ordner angelegt)`;
+  if (erg.uebersprungen) text += `\nSchon vorhanden: ${erg.uebersprungen}`;
+  if (erg.fehler.length) text += `\nNicht lesbar: ${erg.fehler.length}\n\n` + erg.fehler.map(f => '• ' + f).join('\n');
+  if (erg.neu.length && erg.gesamt > 1 && erg.neu.length <= 300) text += '\n\nNeu dazugekommen:\n' + erg.neu.map(f => '• ' + f).join('\n');
+  await ui.meldung(text);
+}
+
+async function uebernehmeAusOneDrive() {
+  if (!navigator.onLine) return ui.meldung('Dafür braucht es eine Internetverbindung.');
+  navigator.storage?.persist?.().catch(() => {});
+  const f = ui.fortschritt('Aus OneDrive übernehmen');
+  let erg;
+  try {
+    const liste = await sync.notabilityListe((t, x, k) => f.setze(t, x, k));
+    erg = await importiereAusOneDrive(liste, (t, x, k) => f.setze(t, x, k));
+  } catch (err) { f.zu(); return ui.meldung('Übernehmen fehlgeschlagen: ' + (err.message || err)); }
+  f.zu();
+  await zeigeImportBericht(erg);
+  render();
 }
 
 async function exportieren(knopf) {

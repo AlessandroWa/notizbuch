@@ -167,6 +167,34 @@ async function liste(teile) {
 }
 const loesche = teile => graph(pfad(teile), { methode: 'DELETE', ok404: true });
 
+// ---------- Notability-Ordner lesen (für den Import) ----------
+// Nur lesende Zugriffe außerhalb von "Notizbuch": Liste der PDFs im OneDrive-Ordner "Notability".
+export async function notabilityListe(melde = () => {}) {
+  const out = [];
+  async function lauf(teile) {
+    melde('OneDrive wird durchsucht …', null, teile.join(' › '));
+    let url = `/me/drive/root:/${teile.map(encodeURIComponent).join('/')}:/children?$top=999`;
+    while (url) {
+      const j = await graph(url, { ok404: true });
+      if (!j) return;
+      for (const it of j.value) {
+        if (it.folder) await lauf([...teile, it.name]);
+        else if (/\.pdf$/i.test(it.name)) out.push({ teile: [...teile.slice(1), it.name], datum: Date.parse(it.lastModifiedDateTime) || Date.now(), item: it });
+      }
+      url = j['@odata.nextLink'];
+    }
+  }
+  await lauf(['Notability']);
+  // Download-Adressen laufen nach einer Weile ab: dann frisch holen
+  return out.map(x => ({
+    teile: x.teile, datum: x.datum,
+    blob: async () => {
+      try { return await inhalt(x.item); }
+      catch { return inhalt(await graph(`/me/drive/items/${encodeURIComponent(x.item.id)}`)); }
+    },
+  }));
+}
+
 // ---------- Abgleich ----------
 let laeuft = null, nochmal = false;
 export function abgleichen() {

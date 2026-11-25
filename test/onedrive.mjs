@@ -57,9 +57,11 @@ async function microsoft(route) {
   }
   if (aktion === 'createUploadSession') return json(route, 200, { uploadUrl: 'https://upload.fake/' + encodeURIComponent(p) });
   if (aktion === 'children') {
-    const kinder = [...ablage.entries()].filter(([k]) => k.startsWith(p + '/') && !k.slice(p.length + 1).includes('/'));
-    if (!kinder.length) return json(route, 404, { error: 'itemNotFound' });
-    return json(route, 200, { value: kinder.map(([k, e]) => item(k, e)) });
+    const unter = [...ablage.entries()].filter(([k]) => k.startsWith(p + '/'));
+    if (!unter.length) return json(route, 404, { error: 'itemNotFound' });
+    const dateien = unter.filter(([k]) => !k.slice(p.length + 1).includes('/')).map(([k, e]) => item(k, e));
+    const ordner = [...new Set(unter.map(([k]) => k.slice(p.length + 1)).filter(r => r.includes('/')).map(r => r.split('/')[0]))].map(name => ({ name, folder: { childCount: 1 } }));
+    return json(route, 200, { value: [...ordner, ...dateien] });
   }
   if (m === 'DELETE') { ablage.delete(p); return route.fulfill({ status: 204, headers: CORS }); }
   const e = ablage.get(p);
@@ -206,6 +208,30 @@ await abgleich(B.page);
 await abgleich(A.page);
 dA = await daten(A.page);
 pruefe(pfade(dA).includes('Abgeschlossene BV/BV Synctest'), 'Ordner verschoben (B → A)');
+
+// ---------- Aus OneDrive übernehmen (Notability-Ordner, nur lesen) ----------
+const nbPdf = (pfad, daten) => ablage.set(pfad, { daten, typ: 'application/pdf', ver: ++ver });
+nbPdf('Notability/Auftrag/BV Cloud/Plan EG.pdf', pdf.subarray(0, 4000).length ? fs.readFileSync('/tmp/nb-gross.pdf') : pdf);
+const klein = await (async () => { const pg = await A.ctx.newPage(); await pg.setContent('<h1>Angebot</h1>'); const b = await pg.pdf({ format: 'A4' }); await pg.close(); return b; })();
+nbPdf('Notability/Offen/Kunde Cloud/Angebot.pdf', klein);
+nbPdf('Notability/Offen/Kunde Cloud/NBMetadataCache.pdf', klein);
+nbPdf('Notability/Privat/Garten/Skizze.pdf', klein);
+const vorher = JSON.stringify([...ablage.entries()].filter(([k]) => k.startsWith('Notability/')).map(([k, e]) => [k, e.ver]));
+await A.page.goto(server.url + '#/einstellungen');
+await A.page.click('[data-a=notability-od]');
+await A.page.waitForSelector('.dlg:not(.fortschritt) .primaer', { timeout: 30000 });
+let bericht = await A.page.locator('.dlg .dlg-text').innerText();
+await A.page.click('.dlg .primaer');
+console.log('     Bericht: ' + bericht.replace(/\n/g, ' | '));
+dA = await daten(A.page);
+pruefe(/In der Auswahl: 3 PDFs/.test(bericht) && /Neu übernommen: 3/.test(bericht), 'Aus OneDrive übernommen: 3 PDFs (NBMetadataCache übersprungen)');
+pruefe(pfade(dA).includes('Auftrag/BV Cloud') && pfade(dA).includes('Offen/Kunde Cloud') && pfade(dA).includes('Privat/Garten'), 'Ordner wie in Notability angelegt');
+pruefe(JSON.stringify([...ablage.entries()].filter(([k]) => k.startsWith('Notability/')).map(([k, e]) => [k, e.ver])) === vorher, 'Notability-Ordner in OneDrive unverändert (nur gelesen)');
+await A.page.click('[data-a=notability-od]');
+await A.page.waitForSelector('.dlg:not(.fortschritt) .primaer', { timeout: 30000 });
+bericht = await A.page.locator('.dlg .dlg-text').innerText();
+await A.page.click('.dlg .primaer');
+pruefe(/Neu übernommen: 0/.test(bericht) && /Schon vorhanden: 3/.test(bericht), 'Zweites Mal: nichts doppelt');
 
 const logs = [...A.page.logs, ...B.page.logs].filter(l => !/Failed to load resource|ERR_INTERNET_DISCONNECTED|net::/.test(l));
 pruefe(logs.length === 0, 'Keine JavaScript-Fehler' + (logs.length ? ':\n  ' + logs.join('\n  ') : ''));
