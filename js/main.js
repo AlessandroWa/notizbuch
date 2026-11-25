@@ -353,6 +353,7 @@ async function uebernehme(dateien, zielOrdner) {
   navigator.storage?.persist?.().catch(() => {});
   const f = ui.fortschritt('Wird übernommen');
   let erg;
+  if (sync.eingerichtet() && sync.status.angemeldet && navigator.onLine) { f.setze('Abgleich mit OneDrive …', null); await sync.abgleichen().catch(() => {}); }
   try { erg = await importiere(dateien, zielOrdner, (t, x, k) => f.setze(t, x, k)); }
   catch (err) { f.zu(); return ui.meldung(err.message || String(err)); }
   f.zu();
@@ -404,6 +405,10 @@ async function uebernehmeAusOneDrive() {
   const f = ui.fortschritt('Aus OneDrive übernehmen');
   let erg;
   try {
+    // erst abgleichen: was ein anderes Gerät schon übernommen hat, wird so erkannt und nicht doppelt angelegt
+    f.setze('Abgleich mit OneDrive …', null);
+    await sync.abgleichen();
+    if (sync.status.fehler) throw new Error(sync.status.fehler);
     const liste = await sync.notabilityListe((t, x, k) => f.setze(t, x, k));
     erg = await importiereAusOneDrive(liste, (t, x, k) => f.setze(t, x, k));
   } catch (err) { f.zu(); return ui.meldung('Übernehmen fehlgeschlagen: ' + (err.message || err)); }

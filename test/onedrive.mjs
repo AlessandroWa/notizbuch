@@ -233,6 +233,16 @@ bericht = await A.page.locator('.dlg .dlg-text').innerText();
 await A.page.click('.dlg .primaer');
 pruefe(/Neu übernommen: 0/.test(bericht) && /Schon vorhanden: 3/.test(bericht), 'Zweites Mal: nichts doppelt');
 
+// B drückt danach auch "Aus OneDrive übernehmen": erst Abgleich, dann nichts doppelt
+await B.page.goto(server.url + '#/einstellungen');
+await B.page.click('[data-a=notability-od]');
+await B.page.waitForSelector('.dlg:not(.fortschritt) .primaer', { timeout: 30000 });
+bericht = await B.page.locator('.dlg .dlg-text').innerText();
+await B.page.click('.dlg .primaer');
+pruefe(/Neu übernommen: 0/.test(bericht), 'Zweites Gerät übernimmt nichts doppelt (' + bericht.split('\n')[1] + ')');
+dB = await daten(B.page);
+pruefe(dB.notes.filter(n => n.quelle?.includes('BV Cloud')).length === 1, 'Notiz aus OneDrive nur einmal vorhanden');
+
 const logs = [...A.page.logs, ...B.page.logs].filter(l => !/Failed to load resource|ERR_INTERNET_DISCONNECTED|net::/.test(l));
 pruefe(logs.length === 0, 'Keine JavaScript-Fehler' + (logs.length ? ':\n  ' + logs.join('\n  ') : ''));
 console.log('     (' + anfragen + ' Anfragen an den nachgestellten Microsoft-Dienst)');
