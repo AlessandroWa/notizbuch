@@ -1,5 +1,5 @@
-// Ziehen und Ablegen wie bei Notability: lange auf einen Ordner oder eine Notiz tippen (oder mit der Maus
-// gedrückt halten), dann ziehen.
+// Ziehen und Ablegen wie bei Notability: am iPad lange auf einen Ordner oder eine Notiz tippen, dann ziehen.
+// Mit der Maus: einfach klicken und ziehen.
 //  - Ordner auf Ordner (Mitte)       → wird Unterordner
 //  - Ordner an den oberen/unteren Rand einer Zeile in der Seitenleiste → davor/dahinter einreihen
 //  - Ordner auf „Ordner“ (Überschrift) → Hauptordner (oberste Ebene)
@@ -26,7 +26,8 @@ export function ziehenEinrichten({ fertig, meldung, klappeAuf }) {
     const q = quelleVon(e.target);
     if (!q) return;
     const x = e.clientX, y = e.clientY;
-    warte = { q, x, y, id: e.pointerId, uhr: setTimeout(() => starte(q, x, y), e.pointerType === 'mouse' ? 300 : HALTEN_MS) };
+    const maus = e.pointerType === 'mouse';
+    warte = { q, x, y, id: e.pointerId, maus, uhr: maus ? 0 : setTimeout(() => starte(q, x, y), HALTEN_MS) };
   });
 
   function abbrechenWarten() { if (warte) { clearTimeout(warte.uhr); warte = null; } }
@@ -91,9 +92,15 @@ export function ziehenEinrichten({ fertig, meldung, klappeAuf }) {
   }
 
   document.addEventListener('pointermove', e => {
-    if (warte && e.pointerId === warte.id && Math.hypot(e.clientX - warte.x, e.clientY - warte.y) > 10) abbrechenWarten();
+    if (warte && e.pointerId === warte.id) {
+      const weg = Math.hypot(e.clientX - warte.x, e.clientY - warte.y);
+      if (warte.maus && weg > 6) { const q = warte.q; warte = null; starte(q, e.clientX, e.clientY); }
+      else if (!warte.maus && weg > 10) abbrechenWarten(); // Finger bewegt sich vor dem Halten: das ist Blättern
+    }
     if (zug) { e.preventDefault(); bewege(e.clientX, e.clientY); }
   }, { passive: false });
+  // Das eigene Ziehen des Browsers (Bilder, Links) abschalten, sonst bricht unseres ab
+  document.addEventListener('dragstart', e => { if (e.target.closest?.('#side, #main') && !e.target.closest('.ed')) e.preventDefault(); });
   // Während des Ziehens darf die Seite nicht scrollen
   document.addEventListener('touchmove', e => { if (zug) e.preventDefault(); }, { passive: false });
 

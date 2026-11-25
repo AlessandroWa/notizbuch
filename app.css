@@ -90,7 +90,7 @@ h1 { font-size: clamp(30px, 4vw, 46px); line-height: 1.1; margin: 10px 0 26px; f
 .karten { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 26px 30px; }
 .karte { border: 1.5px solid var(--rand); border-radius: 16px; overflow: hidden; background: var(--karte); display: flex; flex-direction: column; }
 .karte-bild { display: block; width: 100%; aspect-ratio: 1 / 1; background: #fff; overflow: hidden; padding: 0; }
-.karte-bild img { width: 100%; display: block; }
+.karte-bild img { width: 100%; display: block; pointer-events: none; -webkit-user-drag: none; }
 .karte-fuss { display: flex; align-items: center; gap: 4px; padding: 12px 6px 14px 18px; }
 .karte-text { flex: 1; display: flex; flex-direction: column; }
 .karte-text b { font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -204,3 +204,16 @@ body.zieht, body.zieht * { cursor: grabbing !important; }
   background: var(--menue); border: 1px solid var(--rand2); padding: 10px 18px; border-radius: 12px; pointer-events: none; max-width: 90vw; }
 #hinweis.sichtbar { opacity: 1; transform: translate(-50%, 0); }
 @media (prefers-reduced-motion: reduce) { #hinweis { transition: none; } }
+
+/* ---------- Mehrere auswählen ---------- */
+.waehlbar { position: relative; }
+.waehlbar::after { content: ''; position: absolute; top: 10px; right: 10px; width: 26px; height: 26px; border-radius: 50%;
+  border: 2px solid var(--text); background: rgba(0,0,0,.35); box-sizing: border-box; pointer-events: none; }
+.gewaehlt { box-shadow: 0 0 0 3px var(--text); }
+.gewaehlt::after { background: var(--text) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12l4 4 8-8' fill='none' stroke='%23424041' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/18px no-repeat; }
+.auswahl-leiste { position: fixed; left: 50%; bottom: calc(18px + var(--sb)); transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 10px;
+  padding: 8px 8px 8px 18px; border-radius: 16px; background: var(--menue); border: 1px solid var(--rand2); box-shadow: 0 12px 30px rgba(0,0,0,.45); max-width: calc(100vw - 24px); }
+.auswahl-leiste b { white-space: nowrap; }
+.auswahl-leiste button { height: 44px; padding: 0 16px; border-radius: 12px; font-weight: 600; white-space: nowrap; }
+.auswahl-leiste .primaer { background: var(--akz); color: var(--akz-text); }
+.knopf.klein { height: 40px; padding: 0 14px; font-size: 15px; }

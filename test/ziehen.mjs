@@ -98,6 +98,31 @@ const touch = async (von, nach) => page.evaluate(async ({ von, nach }) => {
 await touch(await mitte('.baum-zeile:has-text("Ecommerce")'), await mitte('.baum-zeile:has-text("Ausstellung")'));
 pruefe((await ordner()).pfade.includes('Ausstellung/Ecommerce'), 'Mit dem Finger: lange halten und ziehen');
 
+// 9. Maus: sofort ziehen, ohne vorher zu halten (wie am PC üblich)
+await page.mouse.move(...await mitte('.baum-zeile:has-text("Team-Meeting")')); await page.mouse.down();
+await page.mouse.move(...await mitte('.baum-zeile:has-text("Ablage")'), { steps: 10 });
+await page.mouse.up(); await page.waitForTimeout(300);
+pruefe((await ordner()).pfade.includes('Ablage/Team-Meeting'), 'Maus: klicken und sofort ziehen');
+
+// 10. Mehrere auswählen: zwei BVs und eine Notiz auf einmal nach "Abgeschlossene BV"
+await page.click('.baum-zeile:has-text("Auftrag")');
+for (const n of ['BV Eins', 'BV Zwei', 'BV Drei']) {
+  await page.click('[data-a=neu]'); await page.click('.menue [data-k=ordner]');
+  await page.fill('.dlg input', n); await page.click('.dlg .primaer');
+  await page.click('.baum-zeile:has-text("Auftrag") .nm');
+}
+await page.waitForSelector('.kachel:has-text("BV Drei")');
+await page.click('[data-a=auswahl-an]');
+await page.click('.kachel:has-text("BV Eins")');
+await page.click('.kachel:has-text("BV Drei")');
+pruefe((await page.locator('.auswahl-leiste b').innerText()) === '2 ausgewählt' && await page.locator('.kachel.gewaehlt').count() === 2, 'Auswahl: 2 Ordner markiert, öffnen nicht');
+await page.click('.auswahl-leiste [data-x=move]');
+await page.click('.dlg .baum-zeile:has-text("Abgeschlossene BV")');
+await page.waitForTimeout(400);
+o = await ordner();
+pruefe(o.pfade.includes('Abgeschlossene BV/BV Eins') && o.pfade.includes('Abgeschlossene BV/BV Drei') && o.pfade.includes('Auftrag/BV Zwei'), 'Mehrere auf einmal nach „Abgeschlossene BV“ verschoben');
+pruefe(await page.locator('.auswahl-leiste').count() === 0, 'Auswahl danach beendet');
+
 pruefe(logs.length === 0, 'Keine JavaScript-Fehler' + (logs.length ? ':\n  ' + logs.join('\n  ') : ''));
 await browser.close();
 server.close();

@@ -111,6 +111,50 @@ side.addEventListener('input', e => {
   history.replaceState(null, '', h);
   zeichneHaupt();
 });
+// ---------- Mehrere auswählen und verschieben ----------
+let auswahl = null; // {ordner, set: Set('ordner:id' | 'notiz:id')}
+function markiereAuswahl() {
+  for (const el of main.querySelectorAll('[data-zieh]')) {
+    el.classList.toggle('waehlbar', !!auswahl);
+    el.classList.toggle('gewaehlt', !!auswahl?.set.has(el.dataset.zieh));
+  }
+  let leiste = document.querySelector('.auswahl-leiste');
+  if (!auswahl) { leiste?.remove(); return; }
+  if (!leiste) {
+    leiste = document.createElement('div');
+    leiste.className = 'auswahl-leiste';
+    leiste.innerHTML = '<b></b><button data-x="alle">Alle</button><button class="primaer" data-x="move">Verschieben nach …</button><button data-x="fertig">Fertig</button>';
+    leiste.addEventListener('click', async e => {
+      const x = e.target.closest('[data-x]')?.dataset.x;
+      if (x === 'fertig') return beendeAuswahl();
+      if (x === 'alle') { for (const el of main.querySelectorAll('[data-zieh]')) auswahl.set.add(el.dataset.zieh); return markiereAuswahl(); }
+      if (x === 'move') return verschiebeAuswahl();
+    });
+    document.body.append(leiste);
+  }
+  const n = auswahl.set.size;
+  leiste.querySelector('b').textContent = n === 1 ? '1 ausgewählt' : `${n} ausgewählt`;
+  leiste.querySelector('[data-x=move]').disabled = !n;
+}
+function beendeAuswahl() { auswahl = null; markiereAuswahl(); }
+
+async function verschiebeAuswahl() {
+  const teile = [...auswahl.set].map(k => k.split(':'));
+  const ordner = teile.filter(([t]) => t === 'ordner').map(([, id]) => id);
+  const notizen = teile.filter(([t]) => t === 'notiz').map(([, id]) => id);
+  const ausschluss = ordner.flatMap(id => store.descendants(id));
+  const ziel = await ui.waehleOrdner(`${auswahl.set.size} verschieben nach`, { ausschluss, oberste: !notizen.length });
+  if (ziel === undefined) return;
+  let ok = 0, nein = 0;
+  for (const id of ordner) { try { await store.ordneOrdner(id, ziel); ok++; } catch { nein++; } }
+  for (const id of notizen) { await store.moveNote(id, ziel || store.todoId()); ok++; }
+  const name = ziel ? `„${store.folder(ziel).name}“` : 'die oberste Ebene';
+  hinweis(`${ok} nach ${name} verschoben` + (nein ? `, ${nein} ging nicht` : ''));
+  if (ziel) { offen.add(ziel); merkeOffen(); }
+  beendeAuswahl();
+  render();
+}
+
 // ---------- Updates ----------
 // Neue Version liegt bereit, sobald der neue Service Worker übernimmt. Dann neu laden – aber nie mitten
 // im Schreiben: im Editor wird gewartet, bis die Notiz verlassen wird.
@@ -171,6 +215,7 @@ const kopf = (crumbs, knoepfe) => `<header class="kopf">
 const neuKnopf = '<button class="neu" data-a="neu">' + SVG.plus + '<span>Neu</span></button>';
 
 function zeichneOrdner(id) {
+  if (auswahl && auswahl.ordner !== id) beendeAuswahl();
   const f = store.folder(id);
   if (!f) return geh('#/ordner/' + store.todoId(), true);
   aktuellerOrdner = id;
@@ -179,12 +224,13 @@ function zeichneOrdner(id) {
   const unter = store.children(id), notizen = store.notesIn(id);
   main.innerHTML = kopf(
     pfad.map(p => `<a href="#/ordner/${p.id}">${esc(p.name)}</a>`).join('<span>›</span>'),
-    `<button class="rund" data-a="ordner-menue" aria-label="Ordner-Aktionen" title="Ordner-Aktionen">${SVG.mehr}</button>${neuKnopf}`) +
+    `${unter.length || notizen.length ? '<button class="knopf klein" data-a="auswahl-an">Auswählen</button>' : ''}<button class="rund" data-a="ordner-menue" aria-label="Ordner-Aktionen" title="Ordner-Aktionen">${SVG.mehr}</button>${neuKnopf}`) +
     `<h1><span class="dot gross" style="background:${f.color}"></span>${esc(f.name)}</h1>
     ${unter.length ? `<section class="kacheln" aria-label="Unterordner">${unter.map(kachel).join('')}</section>` : ''}
     ${notizen.length ? `<section class="karten" aria-label="Notizen">${notizen.map(n => karte(n)).join('')}</section>`
       : `<p class="leer">${f.system === 'todo' ? 'Hier landen neue Notizen, bis du sie einsortierst.' : 'Noch keine Notizen in diesem Ordner.'}<br>Tippe oben rechts auf „Neu“.</p>`}`;
   ladeVorschauen();
+  markiereAuswahl();
 }
 
 function zeichneSuche(q) {
@@ -288,12 +334,22 @@ async function ladeVorschauen() {
 // ---------- Aktionen im Hauptbereich ----------
 main.addEventListener('click', async e => {
   if (e.target.closest('.ed')) return; // Klicks im Editor behandelt der Editor selbst
+  if (auswahl) {
+    const z = e.target.closest('[data-zieh]');
+    if (z && !e.target.closest('[data-a=notiz-menue]')) {
+      e.preventDefault();
+      auswahl.set.has(z.dataset.zieh) ? auswahl.set.delete(z.dataset.zieh) : auswahl.set.add(z.dataset.zieh);
+      markiereAuswahl();
+      return;
+    }
+  }
   const el = e.target.closest('[data-a],[data-ordner]');
   if (!el) return;
   const a = el.dataset.a;
   if (!a && el.dataset.ordner) return geh('#/ordner/' + el.dataset.ordner);
   const nid = el.closest('[data-notiz]')?.dataset.notiz;
   if (a === 'seite') return document.body.classList.toggle('side-offen');
+  if (a === 'auswahl-an') { auswahl = { ordner: aktuellerOrdner, set: new Set() }; return markiereAuswahl(); }
   if (a === 'oeffnen') return geh('#/notiz/' + nid);
   if (a === 'neu') return neuMenue(el);
   if (a === 'ordner-menue') return ordnerMenue(el, aktuellerOrdner);
@@ -471,9 +527,10 @@ async function neuerOrdner(parentId) {
 async function ordnerMenue(knopf, id) {
   const f = store.folder(id);
   const k = await ui.menue(knopf, [
-    { k: 'neu', t: 'Unterordner anlegen' }, { k: 'name', t: 'Umbenennen' }, { k: 'farbe', t: 'Farbe ändern' },
+    { k: 'mehrere', t: 'Mehrere auswählen' }, { k: 'neu', t: 'Unterordner anlegen' }, { k: 'name', t: 'Umbenennen' }, { k: 'farbe', t: 'Farbe ändern' },
     ...(f.system ? [] : [{ k: 'move', t: 'Verschieben nach …' }, { k: 'einsortieren', t: 'In vorhandene Ordner einsortieren' }, '-', { k: 'del', t: 'Ordner löschen', gefahr: true }]),
   ]);
+  if (k === 'mehrere') { auswahl = { ordner: id, set: new Set() }; return markiereAuswahl(); }
   if (k === 'neu') return neuerOrdner(id);
   if (k === 'name') { const n = await ui.frage('Ordner umbenennen', f.name, 'Speichern'); if (n) await store.updateFolder(id, { name: n }); }
   if (k === 'farbe') { const c = await ui.waehleFarbe(f.color); if (c) await store.updateFolder(id, { color: c }); }
@@ -537,6 +594,7 @@ function render() {
     if (editor) { const e = editor; editor = null; await e.close(); offeneNotiz = null; sync.geaendert(); if (updateBereit) { location.reload(); return; } }
     document.body.classList.remove('schreiben');
     const { art, wert } = route();
+    if (auswahl && art !== 'ordner') beendeAuswahl();
     if (art === 'notiz') return oeffneNotiz(wert);
     if (!art) return geh('#/ordner/' + (store.folder(localStorage.getItem('nb.zuletzt')) ? localStorage.getItem('nb.zuletzt') : store.todoId()), true);
     zeichneSeite();
